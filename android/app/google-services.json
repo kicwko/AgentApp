@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "1008376939186",
+    "project_id": "kweecko-2026",
+    "storage_bucket": "kweecko-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1008376939186:android:870f3df7871e7b797ebfab",
+        "android_client_info": {
+          "package_name": "com.kweecko.agentapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1008376939186-0c61no770ph1mourcm8nhig2vjouc4a6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kweecko.agentapp",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "1008376939186-dt4kd37vseg6r3kq217jdhl2nkad6751.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAu46yB7Qx77rTZgfSm1EraqjttKp_XKTs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1008376939186-dt4kd37vseg6r3kq217jdhl2nkad6751.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1008376939186-dqmkjn29002bt22gt0tfo5iv9arrn1tn.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.kweecko.agentapp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

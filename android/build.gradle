@@ -1,0 +1,43 @@
+buildscript {
+    ext {
+        buildToolsVersion = "37.0.0"
+        minSdkVersion = 24
+        compileSdkVersion = 37
+        targetSdkVersion = 36
+        ndkVersion = "27.1.12297006"
+        kotlinVersion = "2.2.0"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        // Firebase: required to process android/app/google-services.json at build time.
+        // Add this classpath once (here), then `apply plugin: "com.google.gms.google-services"`
+        // in android/app/build.gradle (see that file for the matching line + explanation).
+        classpath("com.google.gms:google-services:4.4.4")
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"
+
+// UNSUPPORTED workaround (per https://rnfirebase.io/migrating-to-v27 "Unsupported
+// older-Kotlin workaround"): firebase-auth 25.x ships Kotlin 2.4.0 metadata, but
+// @react-native/gradle-plugin (bundled with RN 0.88.1) pins the project's Kotlin
+// Gradle plugin to 2.2.0, which can't read that metadata. The officially
+// recommended fix is raising Kotlin to >=2.4.0, but that isn't possible here
+// since RN's own included gradle-plugin build fixes it at 2.2.0. This flag tells
+// the compiler to skip the metadata version check for this module only. Remove
+// this once RN's bundled gradle-plugin (or this project's RN version) moves to
+// Kotlin >= 2.4.0.
+subprojects { subproject ->
+    def n = subproject.name
+    if (n.contains('react-native-firebase_auth') || n.contains('@react-native-firebase_auth')) {
+        subproject.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+            kotlinOptions.freeCompilerArgs += ['-Xskip-metadata-version-check']
+        }
+    }
+}

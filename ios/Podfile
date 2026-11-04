@@ -1,0 +1,49 @@
+# Resolve react_native_pods.rb with node to allow for hoisting
+require Pod::Executable.execute_command('node', ['-p',
+  'require.resolve(
+    "react-native/scripts/react_native_pods.rb",
+    {paths: [process.argv[1]]},
+  )', __dir__]).strip
+
+platform :ios, min_ios_version_supported
+prepare_react_native_project!
+
+# react-native-firebase resolves Firebase on iOS via Swift Package Manager,
+# whose products are static-only. That collides (duplicate symbols) with
+# CocoaPods' default static linkage, so dynamic frameworks are required here
+# -- see https://rnfirebase.io/ios-spm. This must be set directly rather than
+# only via the USE_FRAMEWORKS env var, so it's durable across every
+# `pod install` (CI included).
+use_frameworks! :linkage => :dynamic
+
+target 'AgentApp' do
+  config = use_native_modules!
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    # An absolute path to your application root.
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      # :ccache_enabled => true
+    )
+
+    # Some pods' privacy-manifest resource bundle targets (e.g. PromisesObjC,
+    # GoogleUtilities) ship an older IPHONEOS_DEPLOYMENT_TARGET than this
+    # Xcode's minimum supported version. Force every pod target to match the
+    # project's minimum so the build doesn't fail on those targets.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        deployment_target = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
+        if deployment_target && deployment_target.to_f < min_ios_version_supported.to_f
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = min_ios_version_supported
+        end
+      end
+    end
+  end
+end
