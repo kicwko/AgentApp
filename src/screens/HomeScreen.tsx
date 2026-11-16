@@ -1,105 +1,63 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { KweeckoLogo } from '../components/KweeckoLogo';
-import { signOutUser, type User } from '../services/firebaseAuth';
+import { StyleSheet, View } from 'react-native';
+import { AppFooter, type TabName } from '../components/AppFooter';
+import { AppHeader } from '../components/AppHeader';
+import type { User } from '../services/firebaseAuth';
 import { colors } from '../theme/colors';
-import { typography } from '../theme/typography';
+import { DashboardScreen } from './DashboardScreen';
+import { OrdersScreen } from './OrdersScreen';
+import { SettingsScreen } from './SettingsScreen';
 
 type Props = {
   user: User;
 };
 
 /**
- * Placeholder post-login screen. Task-fetching from a backend isn't built
- * yet — this just confirms the signed-in identity and offers sign out.
+ * Main application shell for authenticated agents.
+ * Integrates reusable AppHeader, Tab Navigation, and AppFooter.
  */
 export function HomeScreen({ user }: Props) {
-  const [signingOut, setSigningOut] = useState(false);
-
-  const handleSignOut = async () => {
-    setSigningOut(true);
-    try {
-      await signOutUser();
-    } finally {
-      setSigningOut(false);
-    }
-  };
+  const [activeTab, setActiveTab] = useState<TabName>('dashboard');
+  const [isOnDuty, setIsOnDuty] = useState(true);
 
   return (
-    <View style={styles.screen}>
-      <KweeckoLogo />
+    <View style={styles.container}>
+      {/* Common App Header */}
+      <AppHeader
+        isOnDuty={isOnDuty}
+        onToggleDuty={() => setIsOnDuty(prev => !prev)}
+        onPressProfile={() => setActiveTab('settings')}
+      />
 
-      <View style={styles.card}>
-        <Text style={styles.greeting}>You're signed in</Text>
-        <Text style={styles.email}>{user.email ?? user.uid}</Text>
+      {/* Main Tab Content */}
+      <View style={styles.body}>
+        {activeTab === 'dashboard' && <DashboardScreen user={user} />}
+        {activeTab === 'orders' && <OrdersScreen user={user} />}
+        {activeTab === 'settings' && (
+          <SettingsScreen
+            user={user}
+            isOnDuty={isOnDuty}
+            onToggleDuty={() => setIsOnDuty(prev => !prev)}
+          />
+        )}
       </View>
 
-      <Text style={styles.subtext}>
-        Task assignments aren't wired up yet — this screen just confirms
-        Firebase Auth is working end to end.
-      </Text>
-
-      <TouchableOpacity
-        style={styles.signOutButton}
-        onPress={handleSignOut}
-        disabled={signingOut}
-        activeOpacity={0.85}>
-        {signingOut ? (
-          <ActivityIndicator color={colors.coral} />
-        ) : (
-          <Text style={styles.signOutButtonText}>Sign Out</Text>
-        )}
-      </TouchableOpacity>
+      {/* Common App Footer / Bottom Navigation */}
+      <AppFooter
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        ordersBadgeCount={3}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  container: {
     flex: 1,
-    backgroundColor: colors.backgroundPeach,
-    paddingHorizontal: 24,
-    paddingTop: 32,
+    backgroundColor: colors.surface,
   },
-  card: {
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 20,
-    marginTop: 32,
-  },
-  greeting: {
-    fontFamily: typography.fontFamily,
-    fontWeight: typography.weightBold,
-    fontSize: 20,
-    color: colors.textDark,
-  },
-  email: {
-    fontFamily: typography.fontFamily,
-    fontSize: 15,
-    color: colors.textMuted,
-    marginTop: 6,
-  },
-  subtext: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.textMuted,
-    marginTop: 20,
-  },
-  signOutButton: {
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: colors.coral,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 32,
-  },
-  signOutButtonText: {
-    fontFamily: typography.fontFamily,
-    fontWeight: typography.weightSemibold,
-    fontSize: 16,
-    color: colors.coral,
+  body: {
+    flex: 1,
   },
 });

@@ -9,11 +9,11 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { HomeScreen } from './src/screens/HomeScreen';
-import { RegisterScreen } from './src/screens/RegisterScreen';
 import { SignInScreen } from './src/screens/SignInScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { configureGoogleSignIn } from './src/services/googleAuth';
 import { subscribeToAuthState, type User } from './src/services/firebaseAuth';
+import { userService } from './src/services/userService';
 import { colors } from './src/theme/colors';
 
 type AuthScreen = 'welcome' | 'signin' | 'register';
@@ -28,6 +28,17 @@ function App() {
     const unsubscribe = subscribeToAuthState(nextUser => {
       setUser(nextUser);
       setCheckingAuth(false);
+      if (nextUser) {
+        userService
+          .fetchPartnerProfile({
+            uid: nextUser.uid,
+            email: nextUser.email,
+            phone: nextUser.phoneNumber,
+          })
+          .catch(err => {
+            console.warn('[App] Backend partner sync notice:', err?.message);
+          });
+      }
     });
     return unsubscribe;
   }, []);
@@ -41,18 +52,10 @@ function App() {
     );
   } else if (user) {
     content = <HomeScreen user={user} />;
-  } else if (authScreen === 'signin') {
+  } else if (authScreen === 'signin' || authScreen === 'register') {
     content = (
       <SignInScreen
         onBack={() => setAuthScreen('welcome')}
-        onGoToRegister={() => setAuthScreen('register')}
-      />
-    );
-  } else if (authScreen === 'register') {
-    content = (
-      <RegisterScreen
-        onBack={() => setAuthScreen('welcome')}
-        onGoToSignIn={() => setAuthScreen('signin')}
       />
     );
   } else {

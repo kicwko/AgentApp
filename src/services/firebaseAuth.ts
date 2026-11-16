@@ -5,20 +5,35 @@ import {
   onAuthStateChanged,
   signInWithCredential,
   signInWithEmailAndPassword,
+  signInWithPhoneNumber,
   signOut,
+  type ConfirmationResult,
   type User,
 } from '@react-native-firebase/auth';
 
 const auth = getAuth();
 
-export type { User };
+export type { User, ConfirmationResult };
 
-/** Signs in an existing agent with email + password. */
+/** Sends an SMS OTP to the provided E.164 phone number. */
+export function sendPhoneOtp(phoneNumber: string): Promise<ConfirmationResult> {
+  return signInWithPhoneNumber(auth, phoneNumber);
+}
+
+/** Confirms the SMS OTP verification code with the confirmation result. */
+export function confirmPhoneOtp(
+  confirmation: ConfirmationResult,
+  code: string,
+) {
+  return confirmation.confirm(code.trim());
+}
+
+/** Signs in an existing agent with email + password (legacy). */
 export function signInWithEmail(email: string, password: string) {
   return signInWithEmailAndPassword(auth, email.trim(), password);
 }
 
-/** Creates a new agent account with email + password. */
+/** Creates a new agent account with email + password (legacy). */
 export function registerWithEmail(email: string, password: string) {
   return createUserWithEmailAndPassword(auth, email.trim(), password);
 }

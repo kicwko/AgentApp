@@ -70,25 +70,29 @@ app will build but Firebase calls will fail at runtime.
 3. Create an emulator via Android Studio's **Device Manager** if one doesn't
    exist yet (any recent Pixel/Phone profile works).
 
-### Google Sign-In on Android — SHA-1 fingerprint
+### Google Sign-In & Phone Auth on Android — Certificate fingerprints
 
-Google Sign-In only works if the app's signing certificate fingerprint is
-registered with the Firebase project. This is **already done** for the debug
-keystore committed in this repo (`android/app/debug.keystore`):
+Google Sign-In requires the SHA-1 fingerprint, and Firebase Phone Authentication
+(Play Integrity API / SafetyNet) additionally requires the **SHA-256** fingerprint
+registered with the Firebase project.
+
+For the debug keystore committed in this repo (`android/app/debug.keystore`):
 
 ```
-SHA-1: 5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25
+SHA-1:   5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25
+SHA-256: FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C
 ```
 
-You only need to redo this if you regenerate/replace the debug keystore, or
-when building a **release** APK with a different signing key — in that case:
+Ensure both fingerprints are added in:
+**Firebase Console → Project Settings → Your apps → Android app (`com.kweecko.agentapp`) → Add fingerprint**.
 
-```sh
-keytool -list -v -keystore <your-keystore> -alias <alias> -storepass <pass> -keypass <pass>
-```
-
-...then add that SHA-1 in **Firebase Console → Project Settings → Your apps →
-Android app → Add fingerprint**, and re-download `google-services.json`.
+#### Testing Phone Auth on Android Emulators
+Real SMS delivery and Play Integrity verification are often blocked on emulators.
+Firebase provides **Phone numbers for testing** that work instantly on emulators:
+1. In Firebase Console, go to **Authentication → Sign-in method → Phone**.
+2. Expand **Phone numbers for testing**.
+3. Add your number (e.g. `+91 8800313434` or `+91 9999999999`) and a test 6-digit code (e.g. `123456`).
+4. In the app, enter that phone number and verify with the test code instantly without SMS delays or carrier fees.
 
 ### Run it
 
