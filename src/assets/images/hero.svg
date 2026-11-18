@@ -1,0 +1,200 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="100%" height="100%">
+  <defs>
+    <linearGradient id="proBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF5F2"/>
+      <stop offset="100%" stop-color="#FDF2F8"/>
+    </linearGradient>
+    <filter id="crispShadow" x="-10%" y="-10%" width="125%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#1E293B" flood-opacity="0.08"/>
+    </filter>
+    <filter id="pillGlow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#FF5841" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <!-- Background Soft Radial / Geometric Glow -->
+  <rect width="800" height="600" rx="32" fill="url(#proBg)"/>
+  <circle cx="400" cy="300" r="240" fill="#FED7AA" opacity="0.3"/>
+  <circle cx="620" cy="180" r="140" fill="#FCE7F3" opacity="0.6"/>
+  <circle cx="180" cy="420" r="160" fill="#FFE4E6" opacity="0.5"/>
+
+  <!-- Crisp Floating Metric Badge Left -->
+  <g filter="url(#crispShadow)">
+    <rect x="60" y="100" width="190" height="68" rx="16" fill="#FFFFFF"/>
+    <circle cx="95" cy="134" r="20" fill="#ECFDF5"/>
+    <path d="M87 134 L93 140 L104 128" stroke="#10B981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <text x="125" y="128" font-family="'Inter', system-ui, sans-serif" font-size="15" font-weight="800" fill="#0F172A">₹28,500/mo</text>
+    <text x="125" y="147" font-family="'Inter', system-ui, sans-serif" font-size="12" font-weight="600" fill="#64748B">Partner Earnings</text>
+  </g>
+
+  <!-- Crisp Floating Metric Badge Right -->
+  <g filter="url(#crispShadow)">
+    <rect x="550" y="110" width="190" height="68" rx="16" fill="#FFFFFF"/>
+    <circle cx="585" cy="144" r="20" fill="#FFF1F2"/>
+    <path d="M585 133v13l7 4" stroke="#C53678" stroke-width="3" stroke-linecap="round" fill="none"/>
+    <text x="615" y="138" font-family="'Inter', system-ui, sans-serif" font-size="15" font-weight="800" fill="#0F172A">Zero Idle Time</text>
+    <text x="615" y="157" font-family="'Inter', system-ui, sans-serif" font-size="12" font-weight="600" fill="#64748B">Gated Complex Pods</text>
+  </g>
+
+  <!-- Main Ground Platform Shadow -->
+  <ellipse cx="400" cy="510" rx="320" ry="32" fill="#E2E8F0" opacity="0.6"/>
+  <ellipse cx="400" cy="505" rx="270" ry="22" fill="#CBD5E1" opacity="0.4"/>
+
+  <!-- ==================== CHARACTER 1: PLUMBER (LEFT) ==================== -->
+  <g id="plumber" transform="translate(160, 160)">
+    <!-- Shadow -->
+    <ellipse cx="90" cy="335" rx="46" ry="10" fill="#94A3B8" opacity="0.5"/>
+
+    <!-- Work Boots -->
+    <path d="M60 326 h26 v12 a4 4 0 0 1 -4 4 h-22 z" fill="#1E293B"/>
+    <path d="M102 326 h26 v12 a4 4 0 0 1 -4 4 h-22 z" fill="#1E293B"/>
+
+    <!-- Navy Blue Trousers -->
+    <path d="M68 200 L62 326 h22 L90 220 L98 220 L104 326 h22 L118 200 Z" fill="#1E293B"/>
+
+    <!-- Royal Blue Work Uniform Jacket -->
+    <path d="M64 125 C64 105 124 105 124 125 L128 205 L60 205 Z" fill="#2563EB"/>
+    <!-- Collar & details -->
+    <polygon points="78,122 94,146 110,122" fill="#DBEAFE"/>
+    <line x1="94" y1="146" x2="94" y2="205" stroke="#1D4ED8" stroke-width="3"/>
+    <!-- Utility Chest Pocket -->
+    <rect x="100" y="145" width="18" height="20" rx="3" fill="#1D4ED8"/>
+
+    <!-- Left Arm holding Pipe Wrench -->
+    <path d="M64 130 L40 175 L46 195 L65 155" fill="#2563EB"/>
+    <circle cx="43" cy="195" r="9" fill="#FBCFE8"/>
+    <!-- Crisp Pipe Wrench -->
+    <g transform="translate(25, 175) rotate(-25)">
+      <rect x="0" y="0" width="12" height="46" rx="3" fill="#EF4444"/>
+      <path d="M-6 -4 h24 v14 h-8 v8 h-6 v-8 h-10 z" fill="#94A3B8"/>
+      <rect x="-6" y="-12" width="12" height="10" rx="2" fill="#64748B"/>
+    </g>
+
+    <!-- Right Arm / Shoulder Bag Strap -->
+    <path d="M124 130 L145 178 L134 185 L118 145" fill="#2563EB"/>
+    <circle cx="142" cy="183" r="9" fill="#FBCFE8"/>
+    <rect x="120" y="180" width="36" height="28" rx="6" fill="#D97706"/>
+    <path d="M130" y="180" v="-8" stroke="#B45309" stroke-width="3" fill="none"/>
+
+    <!-- Neck & Head -->
+    <rect x="86" y="98" width="16" height="18" fill="#FBCFE8"/>
+    <circle cx="94" cy="82" r="24" fill="#FBCFE8"/>
+    <!-- Navy Pro Cap -->
+    <path d="M70 76 C70 56 118 56 118 76 Z" fill="#1D4ED8"/>
+    <path d="M66 76 h56 a5 5 0 0 1 5 5 v2 h-66 z" fill="#1E3A8A"/>
+    <!-- Face details -->
+    <circle cx="86" cy="80" r="2.5" fill="#1E293B"/>
+    <circle cx="102" cy="80" r="2.5" fill="#1E293B"/>
+    <path d="M89 90 q5 4 10 0" stroke="#9A3412" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  </g>
+
+  <!-- ==================== CHARACTER 2: CENTER HERO 'CHOTU' RUNNER ==================== -->
+  <g id="runner" transform="translate(325, 120)">
+    <!-- Shadow -->
+    <ellipse cx="85" cy="380" rx="55" ry="12" fill="#94A3B8" opacity="0.6"/>
+
+    <!-- Athletic Sneakers -->
+    <path d="M52 370 h28 v14 a5 5 0 0 1 -5 5 h-23 z" fill="#0F172A"/>
+    <path d="M96 370 h28 v14 a5 5 0 0 1 -5 5 h-23 z" fill="#0F172A"/>
+    <rect x="52" y="380" width="28" height="4" fill="#FF5841"/>
+    <rect x="96" y="380" width="28" height="4" fill="#FF5841"/>
+
+    <!-- Clean Chino Pants (Warm Sand Gray) -->
+    <path d="M60 235 L54 370 h24 L82 255 L88 255 L96 370 h24 L114 235 Z" fill="#D4D4D8"/>
+
+    <!-- Kweecko Brand Polo Shirt (Sunset Orange #FF5841) -->
+    <path d="M52 140 C52 118 118 118 118 140 L124 240 L50 240 Z" fill="#FF5841"/>
+    <!-- Polo White Contrast Collar -->
+    <polygon points="68,138 85,160 102,138" fill="#FFFFFF"/>
+    <!-- Digital ID Lanyard Badge -->
+    <rect x="78" y="172" width="14" height="20" rx="3" fill="#FFFFFF" filter="url(#crispShadow)"/>
+    <rect x="81" y="176" width="8" height="4" rx="1" fill="#C53678"/>
+    <line x1="81" y1="184" x2="89" y2="184" stroke="#94A3B8" stroke-width="1.5"/>
+
+    <!-- Runner Cap (Sunset Orange / Crimson peak) -->
+    <circle cx="85" cy="94" r="24" fill="#FED7AA"/>
+    <path d="M58 88 C58 66 112 66 112 88 Z" fill="#E11D48"/>
+    <path d="M54 88 h64 a5 5 0 0 1 5 5 v3 h-74 z" fill="#BE123C"/>
+    <!-- Face details -->
+    <circle cx="77" cy="92" r="2.5" fill="#1E293B"/>
+    <circle cx="93" cy="92" r="2.5" fill="#1E293B"/>
+    <path d="M78 102 q7 6 14 0" stroke="#9F1239" stroke-width="3" stroke-linecap="round" fill="none"/>
+
+    <!-- Package / Society Courier Box in Front -->
+    <g transform="translate(42, 170)">
+      <polygon points="16,0 66,0 82,16 32,16" fill="#FBBF24"/>
+      <polygon points="32,16 82,16 82,58 32,58" fill="#F59E0B"/>
+      <polygon points="16,0 32,16 32,58 16,42" fill="#D97706"/>
+      <line x1="57" y1="8" x2="57" y2="58" stroke="#FFFFFF" stroke-width="4" stroke-dasharray="4,3"/>
+      <!-- Verified Green Check Sticker -->
+      <circle cx="70" cy="30" r="7" fill="#10B981"/>
+      <path d="M67 30 l2 2 l4 -4" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+    </g>
+
+    <!-- Arms Holding Package -->
+    <path d="M52 150 C38 175 42 205 58 208" stroke="#FF5841" stroke-width="16" stroke-linecap="round" fill="none"/>
+    <path d="M118 150 C132 175 128 205 110 208" stroke="#FF5841" stroke-width="16" stroke-linecap="round" fill="none"/>
+    <circle cx="58" cy="208" r="9" fill="#FED7AA"/>
+    <circle cx="110" cy="208" r="9" fill="#FED7AA"/>
+  </g>
+
+  <!-- ==================== CHARACTER 3: CERTIFIED ELECTRICIAN (RIGHT) ==================== -->
+  <g id="electrician" transform="translate(500, 160)">
+    <!-- Shadow -->
+    <ellipse cx="90" cy="335" rx="46" ry="10" fill="#94A3B8" opacity="0.5"/>
+
+    <!-- Heavy-Duty Safety Boots -->
+    <path d="M60 326 h26 v12 a4 4 0 0 1 -4 4 h-22 z" fill="#334155"/>
+    <path d="M102 326 h26 v12 a4 4 0 0 1 -4 4 h-22 z" fill="#334155"/>
+
+    <!-- Dark Steel Gray Cargo Pants -->
+    <path d="M68 200 L62 326 h22 L90 220 L98 220 L104 326 h22 L118 200 Z" fill="#334155"/>
+    <!-- Utility Belt with Holster -->
+    <rect x="58" y="196" width="68" height="10" rx="3" fill="#78350F"/>
+    <rect x="70" y="204" width="6" height="15" rx="1" fill="#F59E0B"/>
+    <rect x="80" y="204" width="6" height="18" rx="1" fill="#EF4444"/>
+    <rect x="90" y="204" width="6" height="12" rx="1" fill="#0284C7"/>
+
+    <!-- High-Vis Technical Teal Jacket -->
+    <path d="M64 125 C64 105 124 105 124 125 L128 200 L60 200 Z" fill="#0F766E"/>
+    <!-- High-Vis Fluorescent Strips -->
+    <rect x="62" y="152" width="64" height="7" fill="#FEF08A"/>
+    <rect x="61" y="176" width="66" height="7" fill="#FEF08A"/>
+
+    <!-- Yellow Safety Hardhat -->
+    <rect x="86" y="98" width="16" height="18" fill="#FDE68A"/>
+    <circle cx="94" cy="82" r="24" fill="#FDE68A"/>
+    <path d="M65 74 C65 48 123 48 123 74 Z" fill="#EAB308"/>
+    <path d="M60 74 h68 a4 4 0 0 1 4 4 v2 h-76 z" fill="#CA8A04"/>
+    <!-- Headlamp -->
+    <rect x="89" y="56" width="10" height="8" rx="2" fill="#38BDF8"/>
+    <!-- Face details -->
+    <circle cx="86" cy="80" r="2.5" fill="#1E293B"/>
+    <circle cx="102" cy="80" r="2.5" fill="#1E293B"/>
+    <path d="M89 90 q5 4 10 0" stroke="#713F12" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+
+    <!-- Left Hand: Confident Thumbs Up -->
+    <path d="M64 130 L45 165 L38 158 L58 130" fill="#0F766E"/>
+    <circle cx="40" cy="160" r="8" fill="#FDE68A"/>
+    <path d="M38 155 v-6 a3 3 0 0 1 6 0 v6" stroke="#CA8A04" stroke-width="2.5" fill="none"/>
+
+    <!-- Right Hand: Holding Cordless Power Drill -->
+    <path d="M124 130 L150 165 L140 176 L118 145" fill="#0F766E"/>
+    <circle cx="148" cy="172" r="8" fill="#FDE68A"/>
+    <!-- Crisp Power Drill Graphic -->
+    <g transform="translate(146, 160) rotate(15)">
+      <rect x="0" y="0" width="24" height="14" rx="3" fill="#0284C7"/>
+      <rect x="24" y="4" width="12" height="6" rx="1" fill="#94A3B8"/>
+      <rect x="4" y="14" width="10" height="16" rx="2" fill="#1E293B"/>
+      <rect x="2" y="28" width="14" height="6" rx="2" fill="#DC2626"/>
+    </g>
+  </g>
+
+  <!-- ==================== CENTER FLOATING BADGE ==================== -->
+  <g filter="url(#crispShadow)" transform="translate(315, 485)">
+    <rect x="0" y="0" width="170" height="44" rx="22" fill="#FFFFFF"/>
+    <circle cx="22" cy="22" r="12" fill="#FEF3C7"/>
+    <path d="M22 14 L24.5 19 L30 19.8 L26 23.7 L27 29 L22 26.4 L17 29 L18 23.7 L14 19.8 L19.5 19 Z" fill="#F59E0B"/>
+    <text x="44" y="27" font-family="'Inter', system-ui, sans-serif" font-size="13" font-weight="800" fill="#0F172A">100% Verified Pros</text>
+  </g>
+</svg>

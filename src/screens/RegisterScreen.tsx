@@ -172,14 +172,14 @@ const styles = StyleSheet.create({
   errorText: {
     fontFamily: typography.fontFamily,
     fontSize: 14,
-    color: colors.coral,
+    color: colors.error,
     marginBottom: 12,
   },
   input: {
     backgroundColor: colors.white,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderLight,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 15,
@@ -187,11 +187,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   primaryButton: {
-    backgroundColor: colors.coral,
+    backgroundColor: colors.buttonPrimary,
     borderRadius: 999,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
   primaryButtonText: {
     fontFamily: typography.fontFamily,
@@ -210,6 +215,6 @@ const styles = StyleSheet.create({
   },
   linkTextBold: {
     fontWeight: typography.weightBold,
-    color: colors.coral,
+    color: colors.primary,
   },
 });

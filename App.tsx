@@ -47,7 +47,7 @@ function App() {
   if (checkingAuth) {
     content = (
       <View style={styles.loadingScreen}>
-        <ActivityIndicator color={colors.coral} size="large" />
+        <ActivityIndicator color={colors.primary} size="large" />
       </View>
     );
   } else if (user) {

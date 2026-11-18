@@ -82,12 +82,12 @@ export function AppFooter({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(252, 249, 248, 0.96)',
+    backgroundColor: colors.surfaceContainerLowest,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(240, 217, 213, 0.7)',
-    shadowColor: '#DC5032',
+    borderTopColor: colors.borderSubtle,
+    shadowColor: colors.primaryGlow,
     shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 8,
   },

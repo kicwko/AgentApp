@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="100%" height="100%">
+  <defs>
+    <linearGradient id="careBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EFF6FF"/>
+      <stop offset="100%" stop-color="#FDF2F8"/>
+    </linearGradient>
+    <filter id="careShadow" x="-10%" y="-10%" width="125%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <rect width="600" height="400" rx="24" fill="url(#careBg)"/>
+  <circle cx="300" cy="200" r="140" fill="#DBEAFE" opacity="0.6"/>
+
+  <!-- Big gentle protective heart in background -->
+  <path d="M300 110 C260 65 190 80 190 135 C190 195 300 255 300 255 C300 255 410 195 410 135 C410 80 340 65 300 110 Z" fill="#BFDBFE" opacity="0.5"/>
+
+  <!-- Ground shadow -->
+  <ellipse cx="300" cy="340" rx="190" ry="14" fill="#CBD5E1" opacity="0.6"/>
+
+  <!-- Character 1: Elderly Person (Left) -->
+  <g transform="translate(110, 130)">
+    <!-- Walking cane -->
+    <path d="M20 100 c0 -18 18 -18 18 0 v100" stroke="#94A3B8" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+    <!-- Body -->
+    <path d="M32 100 C32 85 78 85 78 100 L80 205 L30 205 Z" fill="#64748B"/>
+    <!-- Shawl Cardigan -->
+    <path d="M32 105 C42 140 70 140 78 105" stroke="#CBD5E1" stroke-width="6" fill="none"/>
+    <!-- Head & Gray Hair -->
+    <circle cx="55" cy="65" r="21" fill="#FDE68A"/>
+    <path d="M36 62 C36 40 74 40 74 62 Z" fill="#E2E8F0"/>
+    <!-- Glasses -->
+    <circle cx="50" cy="65" r="5" fill="none" stroke="#475569" stroke-width="2"/>
+    <circle cx="62" cy="65" r="5" fill="none" stroke="#475569" stroke-width="2"/>
+    <line x1="55" y1="65" x2="57" y2="65" stroke="#475569" stroke-width="2"/>
+  </g>
+
+  <!-- Character 2: Caring Guardian / Nurse (Center) -->
+  <g transform="translate(235, 105)">
+    <!-- Legs -->
+    <rect x="42" y="160" width="15" height="75" fill="#1E3A8A"/>
+    <rect x="68" y="160" width="15" height="75" fill="#1E3A8A"/>
+    <path d="M38 230 h22 v8 a3 3 0 0 1 -3 3 h-19 z" fill="#0F172A"/>
+    <path d="M66 230 h22 v8 a3 3 0 0 1 -3 3 h-19 z" fill="#0F172A"/>
+    <!-- Medical Scrub (Royal Blue #2563EB) -->
+    <path d="M32 75 C32 60 92 60 92 75 L96 168 L28 168 Z" fill="#2563EB"/>
+    <!-- Stethoscope -->
+    <path d="M44 75 c0 24 36 24 36 0" stroke="#93C5FD" stroke-width="3.5" fill="none"/>
+    <circle cx="62" cy="94" r="4.5" fill="#1E3A8A"/>
+    <!-- Head -->
+    <circle cx="62" cy="45" r="21" fill="#FED7AA"/>
+    <path d="M41 42 C41 24 83 24 83 42 Z" fill="#475569"/>
+    <!-- Gentle Open Arms -->
+    <path d="M30 82 L5 110 L-14 125" stroke="#2563EB" stroke-width="11" stroke-linecap="round" fill="none"/>
+    <path d="M94 82 L118 110 L138 122" stroke="#2563EB" stroke-width="11" stroke-linecap="round" fill="none"/>
+  </g>
+
+  <!-- Character 3: Playful Child with Heart Balloon (Right) -->
+  <g transform="translate(370, 175)">
+    <!-- Legs -->
+    <rect x="28" y="105" width="11" height="50" fill="#FDE68A"/>
+    <rect x="45" y="105" width="11" height="50" fill="#FDE68A"/>
+    <rect x="24" y="90" width="36" height="24" rx="4" fill="#0284C7"/>
+    <!-- T-Shirt (Sunset Orange #FF5841) -->
+    <path d="M22 55 C22 45 62 45 62 55 L65 96 L19 96 Z" fill="#FF5841"/>
+    <!-- Head & hair -->
+    <circle cx="42" cy="35" r="18" fill="#FED7AA"/>
+    <path d="M24 32 C24 18 60 18 60 32 Z" fill="#78350F"/>
+    <!-- Floating Red Heart Balloon -->
+    <line x1="58" y1="65" x2="72" y2="-15" stroke="#94A3B8" stroke-width="2"/>
+    <g transform="translate(72, -45) scale(0.9)">
+      <path d="M30 10 C20 -15 0 -10 0 10 C0 35 30 55 30 55 C30 55 60 35 60 10 C60 -10 40 -15 30 10 Z" fill="#E11D48"/>
+    </g>
+  </g>
+
+  <!-- Cute Pet: Little Dog sitting between them -->
+  <g transform="translate(310, 260)">
+    <ellipse cx="30" cy="45" rx="22" ry="18" fill="#D97706"/>
+    <circle cx="18" cy="28" r="14" fill="#D97706"/>
+    <path d="M10 24 C6 36 14 40 16 30 Z" fill="#92400E"/>
+    <path d="M26 24 C30 36 22 40 20 30 Z" fill="#92400E"/>
+    <circle cx="12" cy="30" r="3" fill="#0F172A"/>
+    <path d="M48 45 C58 36 60 26 55 24" stroke="#D97706" stroke-width="5" stroke-linecap="round" fill="none"/>
+    <path d="M10 35 h15" stroke="#EF4444" stroke-width="3"/>
+  </g>
+
+  <!-- Top Pill Tag: Verified Caregivers -->
+  <g transform="translate(360, 30)" filter="url(#careShadow)">
+    <rect x="0" y="0" width="200" height="48" rx="14" fill="#FFFFFF"/>
+    <circle cx="24" cy="24" r="10" fill="#FEE2E2"/>
+    <path d="M24 20 C22 17 18 17.5 18 21 C18 25 24 28 24 28 C24 28 30 25 30 21 C30 17.5 26 17 24 20 Z" fill="#E11D48"/>
+    <text x="44" y="23" font-family="'Inter', system-ui, sans-serif" font-size="13" font-weight="800" fill="#0F172A">Police-Vetted Care</text>
+    <text x="44" y="38" font-family="'Inter', system-ui, sans-serif" font-size="11" font-weight="600" fill="#64748B">Elders • Kids • Pet Walking</text>
+  </g>
+</svg>

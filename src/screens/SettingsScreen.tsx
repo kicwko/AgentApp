@@ -632,7 +632,7 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
                       {
                         backgroundColor: hasBankDetails
                           ? colors.primaryFixed
-                          : '#FEE2E2',
+                          : colors.colorErrorContainer,
                       },
                     ]}>
                     <Text style={styles.menuIconGlyph}>🏛️</Text>
@@ -2344,12 +2344,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalSaveButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.buttonPrimary,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   modalSaveBtnText: {
     color: colors.white,

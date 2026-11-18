@@ -6,6 +6,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KweeckoLogo } from './KweeckoLogo';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -13,6 +14,7 @@ type Props = {
   isOnDuty?: boolean;
   onToggleDuty?: () => void;
   onPressProfile?: () => void;
+  onPressLogo?: () => void;
   title?: string;
   showDutyToggle?: boolean;
 };
@@ -21,7 +23,7 @@ export function AppHeader({
   isOnDuty = true,
   onToggleDuty,
   onPressProfile,
-  title = 'KWEEKO',
+  onPressLogo,
   showDutyToggle = true,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -29,13 +31,13 @@ export function AppHeader({
   return (
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 12) }]}>
       <View style={styles.content}>
-        {/* Logo and Brand Title */}
-        <View style={styles.brandGroup}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoGlyph}>⚡</Text>
-          </View>
-          <Text style={styles.brandTitle}>{title}</Text>
-        </View>
+        {/* Official Header Brand Logo */}
+        <KweeckoLogo
+          size="sm"
+          showSubtitle={true}
+          onPress={onPressLogo}
+          style={styles.headerLogo}
+        />
 
         {/* Right actions: Duty toggle + Profile avatar */}
         <View style={styles.actionsGroup}>
@@ -82,47 +84,20 @@ export function AppHeader({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(252, 249, 248, 0.95)',
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(240, 217, 213, 0.6)',
+    borderBottomColor: 'rgba(226, 232, 240, 0.8)',
     zIndex: 50,
   },
   content: {
-    height: 56,
+    height: 58,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  brandGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  logoBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: colors.primaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  logoGlyph: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  brandTitle: {
-    fontFamily: typography.fontFamily,
-    fontWeight: typography.weightBold,
-    fontSize: 18,
-    letterSpacing: -0.5,
-    color: colors.textDark,
+  headerLogo: {
+    flexShrink: 1,
   },
   actionsGroup: {
     flexDirection: 'row',

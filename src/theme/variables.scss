@@ -1,0 +1,146 @@
+// ==========================================
+// KWEECKO Core Design System - Modern Institutional SaaS
+// ==========================================
+
+// Surfaces & Backgrounds
+$surface: #faf8ff;
+$surface-dim: #d2d9f4;
+$surface-bright: #faf8ff;
+$surface-container-lowest: #ffffff;
+$surface-container-low: #f2f3ff;
+$surface-container: #eaedff;
+$surface-container-high: #e2e7ff;
+$surface-container-highest: #dae2fd;
+$surface-variant: #dae2fd;
+$surface-tint: #4d44e3;
+
+// Neutrals & Text
+$on-surface: #131b2e;
+$on-surface-variant: #464555;
+$inverse-surface: #283044;
+$inverse-on-surface: #eef0ff;
+$outline: #777587;
+$outline-variant: #c7c4d8;
+
+// Primary (Cobalt Indigo)
+$color-primary: #3525cd;
+$color-primary-container: #4f46e5;
+$color-primary-hover: linear-gradient(316deg, #4f46e5, #006b56);
+$color-primary-active: #3730a3;
+$color-on-primary: #ffffff;
+$color-on-primary-container: #dad7ff;
+$color-inverse-primary: #c3c0ff;
+$color-primary-fixed: #e2dfff;
+$color-primary-fixed-dim: #c3c0ff;
+$color-on-primary-fixed: #0f0069;
+$color-on-primary-fixed-variant: #3323cc;
+
+// Secondary (Electric Teal & Forest)
+$color-secondary: #006b56;
+$color-secondary-teal: #00c49f;
+$color-secondary-hover: #00b894;
+$color-secondary-container: #63fbd3;
+$color-on-secondary-container: #00725b;
+$color-on-secondary: #ffffff;
+$color-secondary-fixed: #63fbd3;
+$color-secondary-fixed-dim: #3fdeb7;
+$color-on-secondary-fixed: #002018;
+$color-on-secondary-fixed-variant: #005140;
+
+// Tertiary (Amber Gold)
+$color-tertiary: #684000;
+$color-tertiary-gold: #f59e0b;
+$color-tertiary-container: #885500;
+$color-on-tertiary-container: #ffd4a4;
+$color-tertiary-fixed: #ffddb8;
+$color-tertiary-fixed-dim: #ffb95f;
+$color-on-tertiary-fixed: #2a1700;
+$color-on-tertiary-fixed-variant: #653e00;
+
+// Error & Warnings
+$color-error: #ba1a1a;
+$color-on-error: #ffffff;
+$color-error-container: #ffdad6;
+$color-on-error-container: #93000a;
+$color-warning-bg: #fffbeb;
+$color-warning-text: #b45309;
+$color-warning-border: #fde68a;
+
+// Status Badges
+$badge-active-bg: #ecfdf5;
+$badge-active-text: #047857;
+$badge-active-border: #a7f3d0;
+
+$badge-info-bg: #eef2ff;
+$badge-info-text: #4338ca;
+$badge-info-border: #c7d2fe;
+
+$badge-warning-bg: #fffbeb;
+$badge-warning-text: #b45309;
+$badge-warning-border: #fde68a;
+
+// Project-wide Semantic Aliases
+$primary: $color-primary-container; // #4F46E5
+$primary-dark: $color-primary; // #3525CD
+$primary-hover: $color-primary-hover; // #4338CA
+$primary-active: $color-primary-active; // #3730A3
+$primary-glow: rgba(79, 70, 229, 0.25);
+
+$secondary: $color-secondary-teal; // #00C49F
+$secondary-dark: $color-secondary; // #006B56
+$secondary-glow: rgba(0, 196, 159, 0.25);
+
+// Transitioned Legacy Aliases
+$sunset-orange: $color-primary-container; // #4F46E5
+$sunset-orange-hover: $color-primary-hover; // #4338CA
+$red-violet: $color-secondary; // #006B56
+$dark-charcoal: $on-surface; // #131B2E
+$body-slate: $on-surface-variant; // #464555
+$emerald: $color-secondary-teal; // #00C49F
+$accent-pink: $color-secondary; // #006B56
+$accent-emerald: $color-secondary-teal; // #00C49F
+
+// Surfaces & Backgrounds
+$bg-white: $surface; // #FAF8FF
+$bg-primary: $surface;
+$bg-secondary: $surface-container-low; // #F2F3FF
+$bg-hero-top: $surface-container; // #EAEDFF
+$bg-subtle: $surface;
+$bg-card: $surface-container-lowest; // #FFFFFF
+$bg-card-hover: $surface-container-low; // #F2F3FF
+$bg-input: $surface-container-lowest; // #FFFFFF
+
+// Text Colors
+$text-main: $on-surface; // #131B2E
+$text-muted: $on-surface-variant; // #464555
+$text-dim: $outline; // #777587
+$text-white: #ffffff;
+
+// Borders & Glass
+$border-subtle: $surface-container; // #EAEDFF
+$border-light: rgba(199, 196, 216, 0.6); // #C7C4D8
+$border-glass: #e2e8f0;
+$border-glass-focus: $color-primary-container;
+$glass-backdrop-blur: 16px;
+$glass-box-shadow: 0 4px 20px rgba(19, 27, 46, 0.05);
+
+// Elevation Shadows (Level 0 - Level 3)
+$shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.05), 0 1px 2px -1px rgba(15, 23, 42, 0.05);
+$shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+$shadow-lg: 0 20px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08);
+
+// Typography & Geometry
+$font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+$radius-sm: 0.25rem; // 4px
+$radius-md: 0.5rem; // 8px (DEFAULT)
+$radius-lg: 1rem; // 16px
+$radius-xl: 1.5rem; // 24px
+$radius-full: 9999px;
+
+$transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+$transition-bounce: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+// Gradient background color
+$grediant-primary: linear-gradient(316deg, #4555dc, #0eb4a7);
+$grediant-primary-hover: linear-gradient(316deg, #4f46e5, #006b56);

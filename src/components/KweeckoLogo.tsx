@@ -1,75 +1,168 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { colors, gradients } from '../theme/colors';
-import { typography } from '../theme/typography';
+import {
+  Image,
+  StyleProp,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+  ViewStyle,
+} from 'react-native';
 
-type Props = {
-  /** Shrinks the mark for places like a compact header. */
+import logoIcon from '../assets/images/kweecko.png';
+import kweeckoDetails from '../assets/images/KweeckoDetails.png';
+import kweeckoText from '../assets/images/KweeckoText.png';
+
+export type KweeckoLogoSize = 'sm' | 'md' | 'lg';
+
+export type KweeckoLogoProps = {
+  /**
+   * 'sm' for headers, 'md' for compact modal/auth headers, 'lg' for hero/welcome screen.
+   * If compact is passed, it maps to 'sm'.
+   */
+  size?: KweeckoLogoSize;
+  /** Legacy alias: if true, sizes to compact 'sm'. */
   compact?: boolean;
+  /** Whether to show the subtitle tagline ('INSTANT SERVICES ON DEMAND'). Default true. */
+  showSubtitle?: boolean;
+  /** Optional container style override */
+  style?: StyleProp<ViewStyle>;
+  /** Optional press handler if used as a navigation link (e.g. back to home) */
+  onPress?: () => void;
+};
+
+const DIMENSIONS: Record<
+  KweeckoLogoSize,
+  {
+    iconSize: number;
+    titleWidth: number;
+    titleHeight: number;
+    subtitleWidth: number;
+    subtitleHeight: number;
+    gap: number;
+    textMarginTop: number;
+    subtitleMarginTop: number;
+  }
+> = {
+  sm: {
+    iconSize: 38,
+    titleWidth: 108,
+    titleHeight: 14,
+    subtitleWidth: 138,
+    subtitleHeight: 7.5,
+    gap: 8,
+    textMarginTop: 1,
+    subtitleMarginTop: 3,
+  },
+  md: {
+    iconSize: 44,
+    titleWidth: 126,
+    titleHeight: 16.2,
+    subtitleWidth: 162,
+    subtitleHeight: 8.8,
+    gap: 10,
+    textMarginTop: 2,
+    subtitleMarginTop: 4,
+  },
+  lg: {
+    iconSize: 58,
+    titleWidth: 160,
+    titleHeight: 20.6,
+    subtitleWidth: 205,
+    subtitleHeight: 11.1,
+    gap: 12,
+    textMarginTop: 4,
+    subtitleMarginTop: 5,
+  },
 };
 
 /**
- * Brand mark matching kweecko.com's header: a rounded coral badge with a
- * bolt glyph, plus "KWEECKO" / "PARTNER ECOSYSTEM" text.
- *
- * Uses a solid coral fill instead of the site's coral->magenta gradient
- * since react-native-linear-gradient isn't installed yet.
+ * Official Kweecko Brand Logo Header & Hero Component.
+ * Fetches and displays the official web design assets:
+ * - Brand Logo Icon (kweecko.png)
+ * - Brand Wordmark Title (KweeckoText.png)
+ * - Tagline Subtitle (KweeckoDetails.png)
  */
-export function KweeckoLogo({ compact = false }: Props) {
-  const iconSize = compact ? 32 : 44;
+export function KweeckoLogo({
+  size,
+  compact = false,
+  showSubtitle = true,
+  style,
+  onPress,
+}: KweeckoLogoProps) {
+  const resolvedSize: KweeckoLogoSize = size ?? (compact ? 'sm' : 'lg');
+  const d = DIMENSIONS[resolvedSize];
 
-  return (
-    <View style={styles.row}>
+  const content = (
+    <View style={[styles.container, { gap: d.gap }, style]}>
+      {/* Brand Logo Icon */}
       <View
         style={[
-          styles.iconBox,
-          { width: iconSize, height: iconSize, borderRadius: iconSize * 0.3 },
+          styles.logoBox,
+          { width: d.iconSize, height: d.iconSize },
         ]}>
-        <Text style={[styles.bolt, { fontSize: iconSize * 0.55 }]}>⚡</Text>
+        <Image
+          source={logoIcon}
+          style={[styles.logoImage, { width: d.iconSize, height: d.iconSize }]}
+          resizeMode="contain"
+          accessibilityLabel="Kweecko Logo Mark"
+        />
       </View>
-      <View style={styles.textGroup}>
-        <Text style={[styles.title, compact && styles.titleCompact]}>
-          KWEECKO
-        </Text>
-        {!compact && <Text style={styles.subtitle}>PARTNER ECOSYSTEM</Text>}
+
+      {/* Brand Text Group (Title + Subtitle) */}
+      <View style={[styles.textGroup, { marginTop: d.textMarginTop }]}>
+        <Image
+          source={kweeckoText}
+          style={{ width: d.titleWidth, height: d.titleHeight }}
+          resizeMode="contain"
+          accessibilityLabel="KWEECKO"
+        />
+
+        {showSubtitle && (
+          <Image
+            source={kweeckoDetails}
+            style={{
+              width: d.subtitleWidth,
+              height: d.subtitleHeight,
+              marginTop: d.subtitleMarginTop,
+            }}
+            resizeMode="contain"
+            accessibilityLabel="Instant Services On Demand"
+          />
+        )}
       </View>
     </View>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel="Go to Home">
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return content;
 }
 
 const styles = StyleSheet.create({
-  row: {
+  container: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  iconBox: {
-    backgroundColor: gradients.logoFallback,
+  logoBox: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    flexShrink: 0,
   },
-  bolt: {
-    color: colors.white,
+  logoImage: {
+    flexShrink: 0,
   },
   textGroup: {
+    flexDirection: 'column',
     justifyContent: 'center',
-  },
-  title: {
-    fontFamily: typography.fontFamily,
-    fontWeight: typography.weightBold,
-    fontSize: 20,
-    color: colors.textDark,
-    letterSpacing: 0.5,
-  },
-  titleCompact: {
-    fontSize: 16,
-  },
-  subtitle: {
-    fontFamily: typography.fontFamily,
-    fontWeight: typography.weightSemibold,
-    fontSize: 10,
-    color: colors.magenta,
-    letterSpacing: 1,
-    marginTop: 1,
   },
 });

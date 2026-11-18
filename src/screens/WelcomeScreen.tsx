@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { GradientButton } from '../components/GradientButton';
 import { KweeckoLogo } from '../components/KweeckoLogo';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -26,7 +27,7 @@ export function WelcomeScreen({ onSignIn, onRegister }: Props) {
       style={styles.screen}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}>
-      <KweeckoLogo />
+      <KweeckoLogo size="lg" />
 
       <View style={styles.badge}>
         <Text style={styles.badgeText}>⚡ AGENT PARTNER APP</Text>
@@ -42,12 +43,12 @@ export function WelcomeScreen({ onSignIn, onRegister }: Props) {
         daily tasks, and get paid with zero idle time.
       </Text>
 
-      <TouchableOpacity
-        style={styles.primaryButton}
+      <GradientButton
+        title="Sign In"
         onPress={onSignIn}
-        activeOpacity={0.85}>
-        <Text style={styles.primaryButtonText}>Sign In</Text>
-      </TouchableOpacity>
+        style={styles.primaryButton}
+        textStyle={styles.primaryButtonText}
+      />
 
       <TouchableOpacity
         style={styles.secondaryButton}
@@ -81,17 +82,19 @@ const styles = StyleSheet.create({
   },
   badge: {
     alignSelf: 'flex-start',
-    backgroundColor: colors.badgeBackground,
+    backgroundColor: colors.badgeInfoBg,
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 6,
     marginTop: 32,
+    borderWidth: 1,
+    borderColor: colors.badgeInfoBorder,
   },
   badgeText: {
     fontFamily: typography.fontFamily,
     fontWeight: typography.weightSemibold,
     fontSize: 12,
-    color: colors.magenta,
+    color: colors.badgeInfoText,
     letterSpacing: 0.5,
   },
   heading: {
@@ -103,7 +106,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   headingAccent: {
-    color: colors.coral,
+    color: colors.primary,
   },
   subtext: {
     fontFamily: typography.fontFamily,
@@ -113,11 +116,15 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   primaryButton: {
-    backgroundColor: colors.coral,
     borderRadius: 999,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 32,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
   primaryButtonText: {
     fontFamily: typography.fontFamily,
@@ -128,7 +135,8 @@ const styles = StyleSheet.create({
   secondaryButton: {
     borderRadius: 999,
     borderWidth: 1.5,
-    borderColor: colors.coral,
+    borderColor: colors.outlineVariant,
+    backgroundColor: colors.surfaceContainerLowest,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 12,
@@ -137,7 +145,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily,
     fontWeight: typography.weightSemibold,
     fontSize: 16,
-    color: colors.coral,
+    color: colors.primary,
   },
   trustRow: {
     flexDirection: 'row',
@@ -146,7 +154,7 @@ const styles = StyleSheet.create({
     marginTop: 28,
   },
   trustCheck: {
-    color: colors.coral,
+    color: colors.colorSecondaryTeal,
     fontWeight: typography.weightBold,
     marginRight: 6,
   },
