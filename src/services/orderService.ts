@@ -54,6 +54,8 @@ export interface BackendOrder {
   };
   scheduledDate?: string;
   scheduledTimeSlot?: string;
+  startedAt?: string;
+  completedAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -10,13 +10,14 @@ import { SettingsScreen } from './SettingsScreen';
 
 type Props = {
   user: User;
+  onSignOut?: () => void;
 };
 
 /**
  * Main application shell for authenticated agents.
  * Integrates reusable AppHeader, Tab Navigation, and AppFooter.
  */
-export function HomeScreen({ user }: Props) {
+export function HomeScreen({ user, onSignOut }: Props) {
   const [activeTab, setActiveTab] = useState<TabName>('dashboard');
   const [isOnDuty, setIsOnDuty] = useState(true);
 
@@ -27,6 +28,7 @@ export function HomeScreen({ user }: Props) {
         isOnDuty={isOnDuty}
         onToggleDuty={() => setIsOnDuty(prev => !prev)}
         onPressProfile={() => setActiveTab('settings')}
+        onSignOut={onSignOut}
       />
 
       {/* Main Tab Content */}
@@ -38,6 +40,7 @@ export function HomeScreen({ user }: Props) {
             user={user}
             isOnDuty={isOnDuty}
             onToggleDuty={() => setIsOnDuty(prev => !prev)}
+            onSignOut={onSignOut}
           />
         )}
       </View>
@@ -46,7 +49,6 @@ export function HomeScreen({ user }: Props) {
       <AppFooter
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        ordersBadgeCount={3}
       />
     </View>
   );

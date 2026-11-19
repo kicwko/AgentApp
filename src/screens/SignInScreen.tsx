@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { KweeckoLogo } from '../components/KweeckoLogo';
+import { GradientButton } from '../components/GradientButton';
 import {
   confirmPhoneOtp,
   sendPhoneOtp,
@@ -18,17 +19,21 @@ import {
   type ConfirmationResult,
 } from '../services/firebaseAuth';
 import { signInWithGoogle } from '../services/googleAuth';
+import { userService } from '../services/userService';
+import type { AccountStatusData } from './AccountStatusScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
 type Props = {
   onBack: () => void;
   onGoToRegister?: () => void;
+  onAccountStatus?: (data: AccountStatusData) => void;
+  onLoginSuccess?: (user: any) => void;
 };
 
 type PhoneStep = 'phone' | 'otp';
 
-export function SignInScreen({ onBack }: Props) {
+export function SignInScreen({ onBack, onAccountStatus, onLoginSuccess }: Props) {
   const [countryCode, setCountryCode] = useState('+91');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otpCode, setOtpCode] = useState('');
@@ -73,10 +78,44 @@ export function SignInScreen({ onBack }: Props) {
       return;
     }
 
+    const last10 = cleanedNumber.slice(-10);
     const fullPhone = getFullPhoneNumber();
     setSendingOtp(true);
     try {
-      // 15-second safety timeout so the UI never hangs indefinitely if Play Integrity/SMS delays
+      // 1. Check with backend loginSendOtp (detects if user is Blocked)
+      try {
+        const checkRes = await userService.loginSendOtp(last10);
+        if (checkRes) {
+          const rawStatus = (checkRes.status || checkRes.data?.status || '').trim();
+          const isBlocked = checkRes.isBlocked || rawStatus.toLowerCase() === 'blocked';
+          if (isBlocked) {
+            if (onAccountStatus) {
+              onAccountStatus({
+                status: 'Blocked',
+                reason: checkRes.reason || checkRes.message,
+                phone: last10,
+                userName: checkRes.data?.userName || checkRes.data?.fullName,
+                fullName: checkRes.data?.fullName,
+                userId: checkRes.data?.id || checkRes.data?._id,
+              });
+              return;
+            }
+          }
+        }
+      } catch (checkErr: any) {
+        if (checkErr?.isBlocked || checkErr?.status === 'Blocked') {
+          if (onAccountStatus) {
+            onAccountStatus({
+              status: 'Blocked',
+              reason: checkErr.reason || checkErr.message,
+              phone: last10,
+            });
+            return;
+          }
+        }
+      }
+
+      // 2. Dispatch Firebase Phone OTP
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => {
           reject({
@@ -84,14 +123,19 @@ export function SignInScreen({ onBack }: Props) {
             message:
               'Verification request timed out. Please check that Phone auth & SHA-256 are configured in Firebase, or use a Firebase Test Phone Number.',
           });
-        }, 15000);
+        }, 12000);
       });
 
-      const confirmResult = await Promise.race([
-        sendPhoneOtp(fullPhone),
-        timeoutPromise,
-      ]);
-      setConfirmation(confirmResult);
+      try {
+        const confirmResult = await Promise.race([
+          sendPhoneOtp(fullPhone),
+          timeoutPromise,
+        ]);
+        setConfirmation(confirmResult);
+      } catch (fbErr) {
+        console.warn('[SignIn] Firebase phone auth notice:', fbErr);
+      }
+
       setStep('otp');
       setResendCooldown(30);
     } catch (err) {
@@ -102,23 +146,126 @@ export function SignInScreen({ onBack }: Props) {
   };
 
   const handleVerifyOtp = async () => {
-    if (!confirmation) {
-      setError('Session expired. Please request a new OTP.');
-      setStep('phone');
+    const cleanOtp = otpCode.replace(/\D/g, '').slice(0, 6);
+    if (!cleanOtp || cleanOtp.length !== 6) {
+      setError('Please enter a valid 6-digit OTP code.');
       return;
     }
 
-    const cleanOtp = otpCode.trim();
-    if (!cleanOtp || cleanOtp.length < 6) {
-      setError('Please enter the 6-digit OTP code.');
-      return;
-    }
+    const cleanedNumber = phoneNumber.replace(/[\s\-()]/g, '');
+    const last10 = cleanedNumber.slice(-10);
 
     setError(null);
     setVerifyingOtp(true);
     try {
-      await confirmPhoneOtp(confirmation, cleanOtp);
-      // Auth state listener in App.tsx automatically navigates on successful sign-in
+      let firebaseConfirmed = false;
+      if (confirmation) {
+        try {
+          const fbTimeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Firebase confirm timeout')), 2500)
+          );
+          await Promise.race([
+            confirmPhoneOtp(confirmation, cleanOtp),
+            fbTimeoutPromise,
+          ]);
+          firebaseConfirmed = true;
+        } catch (fbErr) {
+          console.warn('[SignIn] Firebase confirm notice:', fbErr);
+        }
+      }
+
+      // Verify OTP with backend to inspect user account status (Blocked, Pending, Active)
+      try {
+        const verifyRes = await userService.loginVerifyOtp(last10, cleanOtp);
+        if (verifyRes) {
+          const rawStatus = (verifyRes.status || verifyRes.data?.status || 'Active').trim();
+          const isBlocked = verifyRes.isBlocked || rawStatus.toLowerCase() === 'blocked';
+          const isPending = verifyRes.isPending || rawStatus.toLowerCase() === 'pending';
+
+          if (isBlocked || isPending || rawStatus !== 'Active') {
+            if (onAccountStatus) {
+              onAccountStatus({
+                status: isBlocked ? 'Blocked' : 'Pending',
+                reason:
+                  (verifyRes as any)?.pendingReason ||
+                  (verifyRes.data as any)?.pendingReason ||
+                  verifyRes.reason ||
+                  verifyRes.message ||
+                  (verifyRes.data as any)?.reason,
+                pendingReason:
+                  (verifyRes as any)?.pendingReason ||
+                  (verifyRes.data as any)?.pendingReason ||
+                  verifyRes.reason ||
+                  verifyRes.message,
+                blockReason: (verifyRes.data as any)?.blockReason,
+                userName:
+                  (verifyRes.data as any)?.userName ||
+                  (verifyRes.data as any)?.fullName ||
+                  (verifyRes.data as any)?.user?.fullName,
+                fullName:
+                  (verifyRes.data as any)?.fullName ||
+                  (verifyRes.data as any)?.user?.fullName,
+                phone: last10,
+                userId:
+                  (verifyRes.data as any)?.id ||
+                  (verifyRes.data as any)?._id ||
+                  (verifyRes.data as any)?.user?._id,
+                token:
+                  (verifyRes.data as any)?.token ||
+                  (verifyRes as any)?.token ||
+                  last10,
+                applicationId: (verifyRes.data as any)?.user?.applicationId,
+                checklist:
+                  (verifyRes.data as any)?.statusDetails?.checklist ||
+                  (verifyRes as any)?.checklist,
+              });
+              return;
+            }
+          } else {
+            // User account is Active!
+            if (onLoginSuccess) {
+              const activeUser: any = {
+                uid:
+                  (verifyRes.data as any)?.id ||
+                  (verifyRes.data as any)?._id ||
+                  (verifyRes.data as any)?.user?._id ||
+                  `agent_${last10}`,
+                displayName:
+                  (verifyRes.data as any)?.userName ||
+                  (verifyRes.data as any)?.fullName ||
+                  (verifyRes.data as any)?.user?.fullName ||
+                  'Partner',
+                phoneNumber: last10,
+                email: (verifyRes.data as any)?.email || (verifyRes.data as any)?.user?.email || '',
+              };
+              onLoginSuccess(activeUser);
+              return;
+            }
+          }
+        }
+      } catch (backendErr: any) {
+        if (
+          backendErr?.isBlocked ||
+          backendErr?.status === 'Blocked' ||
+          backendErr?.isPending ||
+          backendErr?.status === 'Pending'
+        ) {
+          if (onAccountStatus) {
+            onAccountStatus({
+              status:
+                backendErr.isBlocked || backendErr.status === 'Blocked'
+                  ? 'Blocked'
+                  : 'Pending',
+              reason: backendErr.reason || backendErr.message,
+              phone: last10,
+            });
+            return;
+          }
+        }
+        if (!firebaseConfirmed) {
+          throw backendErr;
+        }
+      }
     } catch (err) {
       setError(mapAuthError(err));
     } finally {
@@ -141,8 +288,94 @@ export function SignInScreen({ onBack }: Props) {
       if (outcome.status === 'cancelled') {
         return;
       }
-      await signInWithGoogleIdToken(outcome.idToken);
-      // Auth state listener in App.tsx handles navigation on success.
+      const userCred = await signInWithGoogleIdToken(outcome.idToken);
+      const googleUser = userCred.user;
+
+      // Sync with backend & check account status
+      try {
+        const syncRes = await userService.syncFirebaseUser({
+          email: googleUser.email,
+          displayName: googleUser.displayName,
+          photoURL: googleUser.photoURL,
+          uid: googleUser.uid,
+          phone: googleUser.phoneNumber,
+        });
+
+        const rawStatus = (syncRes?.status || syncRes?.data?.status || 'Active').trim();
+        const isBlocked = syncRes?.isBlocked || rawStatus.toLowerCase() === 'blocked';
+        const isPending = syncRes?.isPending || rawStatus.toLowerCase() === 'pending';
+
+        if (isBlocked || isPending || rawStatus !== 'Active') {
+          if (onAccountStatus) {
+            onAccountStatus({
+              status: isBlocked ? 'Blocked' : 'Pending',
+              reason:
+                (syncRes as any)?.pendingReason ||
+                (syncRes?.data as any)?.pendingReason ||
+                syncRes?.reason ||
+                syncRes?.data?.reason ||
+                syncRes?.message ||
+                '',
+              pendingReason:
+                (syncRes as any)?.pendingReason ||
+                (syncRes?.data as any)?.pendingReason ||
+                syncRes?.reason ||
+                syncRes?.message,
+              blockReason: (syncRes?.data as any)?.blockReason,
+              userName:
+                syncRes?.data?.userName ||
+                syncRes?.data?.fullName ||
+                googleUser.displayName ||
+                '',
+              fullName: syncRes?.data?.fullName || googleUser.displayName || '',
+              email: syncRes?.data?.email || googleUser.email || '',
+              phone: syncRes?.data?.phone || googleUser.phoneNumber || '',
+              userId: syncRes?.data?._id || syncRes?.data?.id || googleUser.uid,
+              token:
+                (syncRes as any)?.token ||
+                (syncRes?.data as any)?.token ||
+                googleUser.uid,
+              checklist:
+                (syncRes?.data as any)?.statusDetails?.checklist ||
+                (syncRes as any)?.checklist,
+            });
+            return;
+          } else {
+            // Google user is Active!
+            if (onLoginSuccess) {
+              const activeUser: any = {
+                uid: syncRes?.data?._id || syncRes?.data?.id || googleUser.uid,
+                displayName: syncRes?.data?.fullName || googleUser.displayName || 'Partner',
+                phoneNumber: syncRes?.data?.phone || googleUser.phoneNumber || '',
+                email: syncRes?.data?.email || googleUser.email || '',
+              };
+              onLoginSuccess(activeUser);
+              return;
+            }
+          }
+        }
+      } catch (syncErr: any) {
+        if (
+          syncErr?.isBlocked ||
+          syncErr?.status === 'Blocked' ||
+          syncErr?.isPending ||
+          syncErr?.status === 'Pending'
+        ) {
+          if (onAccountStatus) {
+            onAccountStatus({
+              status:
+                syncErr.isBlocked || syncErr.status === 'Blocked'
+                  ? 'Blocked'
+                  : 'Pending',
+              reason: syncErr.reason || syncErr.message,
+              email: googleUser.email || '',
+              userId: googleUser.uid,
+              token: googleUser.uid,
+            });
+            return;
+          }
+        }
+      }
     } catch (err) {
       setError(mapAuthError(err));
     } finally {
@@ -199,23 +432,22 @@ export function SignInScreen({ onBack }: Props) {
                 placeholder="10-digit mobile number"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="phone-pad"
+                maxLength={10}
                 value={phoneNumber}
-                onChangeText={setPhoneNumber}
+                onChangeText={text => setPhoneNumber(text.replace(/\D/g, '').slice(0, 10))}
                 autoFocus
               />
             </View>
 
-            <TouchableOpacity
-              style={styles.primaryButton}
+            <GradientButton
+              title="Send OTP"
               onPress={handleSendOtp}
               disabled={sendingOtp}
-              activeOpacity={0.85}>
-              {sendingOtp ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>Send OTP</Text>
-              )}
-            </TouchableOpacity>
+              loading={sendingOtp}
+              loadingText="Sending OTP..."
+              style={styles.primaryButton}
+              textStyle={styles.primaryButtonText}
+            />
           </View>
         ) : (
           <View style={styles.otpSection}>
@@ -231,25 +463,23 @@ export function SignInScreen({ onBack }: Props) {
             <TextInput
               style={styles.otpInput}
               placeholder="000000"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor="#CBD5E1"
               keyboardType="number-pad"
               maxLength={6}
               value={otpCode}
-              onChangeText={setOtpCode}
+              onChangeText={text => setOtpCode(text.replace(/\D/g, '').slice(0, 6))}
               autoFocus
             />
 
-            <TouchableOpacity
-              style={styles.primaryButton}
+            <GradientButton
+              title="Verify & Sign In"
               onPress={handleVerifyOtp}
-              disabled={verifyingOtp}
-              activeOpacity={0.85}>
-              {verifyingOtp ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>Verify & Sign In</Text>
-              )}
-            </TouchableOpacity>
+              disabled={verifyingOtp || otpCode.replace(/\D/g, '').length !== 6}
+              loading={verifyingOtp}
+              loadingText="Verifying..."
+              style={styles.primaryButton}
+              textStyle={styles.primaryButtonText}
+            />
 
             <View style={styles.resendRow}>
               <Text style={styles.resendHint}>Didn't receive the code?</Text>
