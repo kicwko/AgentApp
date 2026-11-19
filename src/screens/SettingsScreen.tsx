@@ -678,6 +678,7 @@ export function SettingsScreen({
 
                 {hasBankDetails ? (
                   <TouchableOpacity
+                    style={styles.changeActionBtn}
                     onPress={() => setActiveModal('bank')}
                     activeOpacity={0.7}>
                     <Text style={styles.changeActionText}>Change</Text>
@@ -846,7 +847,7 @@ export function SettingsScreen({
             activeOpacity={0.8}
             disabled={signingOut}>
             {signingOut ? (
-              <ActivityIndicator color={colors.error} size="small" />
+              <ActivityIndicator color={colors.primary} size="small" />
             ) : (
               <>
                 <Text style={styles.logoutIconGlyph}>🚪</Text>
@@ -924,6 +925,7 @@ export function SettingsScreen({
 
             <GradientButton
               style={styles.modalSaveButton}
+              textStyle={styles.modalSaveBtnText}
               title="Save Profile"
               onPress={() =>
                 saveProfileToDb(
@@ -1008,6 +1010,7 @@ export function SettingsScreen({
 
             <GradientButton
               style={styles.modalSaveButton}
+              textStyle={styles.modalSaveBtnText}
               title="Save & Sync Skills"
               onPress={() =>
                 saveProfileToDb(
@@ -1070,6 +1073,7 @@ export function SettingsScreen({
 
             <GradientButton
               style={styles.modalSaveButton}
+              textStyle={styles.modalSaveBtnText}
               title="Save Rate Card"
               onPress={() =>
                 saveProfileToDb(
@@ -1140,6 +1144,7 @@ export function SettingsScreen({
 
             <GradientButton
               style={styles.modalSaveButton}
+              textStyle={styles.modalSaveBtnText}
               title="Save Geo-Fence"
               onPress={() =>
                 saveProfileToDb(
@@ -1221,6 +1226,7 @@ export function SettingsScreen({
 
             <GradientButton
               style={styles.modalSaveButton}
+              textStyle={styles.modalSaveBtnText}
               title={hasBankDetails ? 'Save Bank Details' : 'Link Bank Details'}
               onPress={() => {
                 const bName = bankName.trim();
@@ -1315,6 +1321,7 @@ export function SettingsScreen({
 
             <GradientButton
               style={styles.modalSaveButton}
+              textStyle={styles.modalSaveBtnText}
               title="Save Vehicle & Kit"
               onPress={() =>
                 saveProfileToDb(
@@ -1402,7 +1409,8 @@ export function SettingsScreen({
             </View>
 
             <GradientButton
-              style={styles.policeDoneBtn}
+              style={styles.modalSaveButton}
+              textStyle={styles.modalSaveBtnText}
               title="Close Verification Card"
               onPress={() => setActiveModal('none')}
             />
@@ -1500,6 +1508,7 @@ export function SettingsScreen({
 
             <GradientButton
               style={styles.modalSaveButton}
+              textStyle={styles.modalSaveBtnText}
               title="Dismiss"
               onPress={() => setActiveModal('none')}
             />
@@ -1742,16 +1751,22 @@ const styles = StyleSheet.create({
   viewCardBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    backgroundColor: '#EEF0FF',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D4D8FD',
+    gap: 4,
   },
   viewCardText: {
-    color: colors.primary,
+    color: '#3525CD',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   viewCardChevron: {
-    color: colors.primary,
-    fontSize: 16,
+    color: '#3525CD',
+    fontSize: 14,
     fontWeight: '700',
   },
 
@@ -1936,10 +1951,18 @@ const styles = StyleSheet.create({
     color: colors.onSurfaceVariant,
     fontWeight: '500',
   },
+  changeActionBtn: {
+    backgroundColor: '#EEF0FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D4D8FD',
+  },
   changeActionText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: colors.primary,
+    fontWeight: '700',
+    color: '#3525CD',
   },
   bankTitleRow: {
     flexDirection: 'row',
@@ -1947,43 +1970,43 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actionRequiredBadge: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 4,
-    borderWidth: 0.5,
-    borderColor: '#FCA5A5',
+    backgroundColor: '#EEF0FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
   },
   actionRequiredText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#DC2626',
+    color: '#3525CD',
   },
   noBankSubText: {
-    color: '#DC2626',
+    color: colors.onSurfaceVariant,
     fontWeight: '500',
   },
   addBankPillBtn: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
+    backgroundColor: '#3525CD',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
   addBankPillText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.white,
   },
   bankWarningBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
+    backgroundColor: '#F2F3FF',
+    borderColor: '#C7D2FE',
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
+    borderRadius: 10,
+    padding: 12,
     marginTop: 10,
-    gap: 8,
+    gap: 10,
   },
   bankWarningIcon: {
     fontSize: 16,
@@ -1994,18 +2017,18 @@ const styles = StyleSheet.create({
   bankWarningTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#991B1B',
+    color: '#131B2E',
     marginBottom: 2,
   },
   bankWarningDesc: {
     fontSize: 11,
-    color: '#7F1D1D',
-    lineHeight: 15,
+    color: colors.onSurfaceVariant,
+    lineHeight: 16,
   },
   bankWarningChevron: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#DC2626',
+    color: '#3525CD',
   },
   instantPayoutBox: {
     backgroundColor: colors.surfaceContainerLow,
@@ -2160,8 +2183,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   logoutButton: {
-    backgroundColor: colors.errorContainer,
-    borderRadius: 12,
+    backgroundColor: '#F2F3FF',
+    borderWidth: 1.5,
+    borderColor: '#C7D2FE',
+    borderRadius: 14,
+    minHeight: 48,
     paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2172,7 +2198,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   logoutButtonText: {
-    color: '#93000A',
+    color: '#3525CD',
     fontSize: 14,
     fontWeight: '700',
   },
@@ -2330,11 +2356,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalSaveButton: {
+    width: '100%',
+    minHeight: 48,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 12,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
@@ -2343,8 +2371,9 @@ const styles = StyleSheet.create({
   },
   modalSaveBtnText: {
     color: colors.white,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
+    textAlign: 'center',
   },
 
   // Police Card Modal
@@ -2492,7 +2521,7 @@ const styles = StyleSheet.create({
   sosModalTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: colors.error,
+    color: colors.primary,
   },
   sosModalDesc: {
     fontSize: 12,
@@ -2523,7 +2552,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: colors.error,
+    backgroundColor: '#3525CD',
     alignItems: 'center',
   },
   sosConfirmText: {

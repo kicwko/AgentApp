@@ -20,7 +20,7 @@ type Props = {
 export function AppFooter({
   activeTab,
   onSelectTab,
-  ordersBadgeCount = 3,
+  ordersBadgeCount,
 }: Props) {
   const insets = useSafeAreaInsets();
 
@@ -43,35 +43,41 @@ export function AppFooter({
           return (
             <TouchableOpacity
               key={tab.key}
-              style={styles.tabItem}
+              style={[styles.tabItem, isActive && styles.tabItemActive]}
               onPress={() => onSelectTab(tab.key)}
               activeOpacity={0.7}
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
               accessibilityLabel={tab.label}>
-              <View style={styles.iconContainer}>
+              <View
+                style={[
+                  styles.tabPill,
+                  isActive && styles.tabPillActive,
+                ]}>
+                <View style={styles.iconContainer}>
+                  <Text
+                    style={[
+                      styles.tabIcon,
+                      isActive ? styles.tabIconActive : styles.tabIconInactive,
+                    ]}>
+                    {tab.icon}
+                  </Text>
+
+                  {tab.badge !== undefined && tab.badge > 0 && (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{tab.badge}</Text>
+                    </View>
+                  )}
+                </View>
+
                 <Text
                   style={[
-                    styles.tabIcon,
-                    isActive ? styles.tabIconActive : styles.tabIconInactive,
+                    styles.tabLabel,
+                    isActive ? styles.tabLabelActive : styles.tabLabelInactive,
                   ]}>
-                  {tab.icon}
+                  {tab.label}
                 </Text>
-
-                {tab.badge !== undefined && tab.badge > 0 && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{tab.badge}</Text>
-                  </View>
-                )}
               </View>
-
-              <Text
-                style={[
-                  styles.tabLabel,
-                  isActive ? styles.tabLabelActive : styles.tabLabelInactive,
-                ]}>
-                {tab.label}
-              </Text>
             </TouchableOpacity>
           );
         })}
@@ -92,18 +98,31 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   content: {
-    height: 60,
+    height: 64,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
   tabItem: {
     flex: 1,
-    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
+  },
+  tabItemActive: {},
+  tabPill: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    minWidth: 80,
+    gap: 2,
+  },
+  tabPillActive: {
+    backgroundColor: '#EEF0FF',
+    borderWidth: 1,
+    borderColor: '#D4D8FD',
   },
   iconContainer: {
     position: 'relative',
@@ -116,22 +135,22 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   tabIconActive: {
-    transform: [{ scale: 1.05 }],
+    transform: [{ scale: 1.15 }],
   },
   tabIconInactive: {
-    opacity: 0.6,
+    opacity: 0.55,
   },
   tabLabel: {
     fontFamily: typography.fontFamily,
     fontSize: 12,
   },
   tabLabelActive: {
-    fontWeight: typography.weightSemibold,
-    color: colors.primaryContainer,
+    fontWeight: '700',
+    color: '#3525CD',
   },
   tabLabelInactive: {
-    fontWeight: typography.weightRegular,
-    color: colors.onSurfaceVariant,
+    fontWeight: '500',
+    color: '#64748B',
   },
   badge: {
     position: 'absolute',

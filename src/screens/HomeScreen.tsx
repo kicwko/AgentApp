@@ -49,7 +49,6 @@ export function HomeScreen({ user, onSignOut }: Props) {
       <AppFooter
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        ordersBadgeCount={3}
       />
     </View>
   );

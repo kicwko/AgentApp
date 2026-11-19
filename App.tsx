@@ -6,7 +6,9 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, LogBox, StatusBar, StyleSheet, View } from 'react-native';
+
+LogBox.ignoreAllLogs();
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AccountStatusScreen, type AccountStatusData } from './src/screens/AccountStatusScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -14,6 +16,7 @@ import { SignInScreen } from './src/screens/SignInScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { configureGoogleSignIn } from './src/services/googleAuth';
 import { signOutUser, subscribeToAuthState, type User } from './src/services/firebaseAuth';
+import { sessionService } from './src/services/sessionService';
 import { userService } from './src/services/userService';
 import { colors } from './src/theme/colors';
 
@@ -25,17 +28,64 @@ function App() {
   const [accountStatus, setAccountStatus] = useState<AccountStatusData | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
+  const saveAndSetUser = (nextUser: User | null) => {
+    setUser(nextUser);
+    sessionService.saveUser(nextUser);
+  };
+
+  const saveAndSetAccountStatus = (
+    nextStatus:
+      | AccountStatusData
+      | null
+      | ((prev: AccountStatusData | null) => AccountStatusData | null)
+  ) => {
+    setAccountStatus(prev => {
+      const resolved =
+        typeof nextStatus === 'function' ? nextStatus(prev) : nextStatus;
+      sessionService.saveAccountStatus(resolved);
+      return resolved;
+    });
+  };
+
   useEffect(() => {
     configureGoogleSignIn();
+
+    let isMounted = true;
+    // 1. Restore persisted partner session from AsyncStorage (survives app kill / recent swipe)
+    (async () => {
+      try {
+        const stored = await sessionService.loadSession();
+        if (isMounted) {
+          if (stored.user) {
+            setUser(stored.user);
+          }
+          if (stored.accountStatus) {
+            setAccountStatus(stored.accountStatus);
+          }
+        }
+      } catch (err) {
+        console.warn('[App] Session load notice:', err);
+      } finally {
+        if (isMounted) {
+          setCheckingAuth(false);
+        }
+      }
+    })();
+
+    // 2. Listen to Firebase auth changes (for Google Sign In)
     const unsubscribe = subscribeToAuthState(async nextUser => {
       if (!nextUser) {
-        setUser(null);
-        setAccountStatus(null);
-        setCheckingAuth(false);
+        // If there is an active local/OTP partner session saved, do not wipe it
+        const stored = await sessionService.loadSession();
+        if (!stored.user && !stored.accountStatus && isMounted) {
+          setUser(null);
+          setAccountStatus(null);
+          setCheckingAuth(false);
+        }
         return;
       }
 
-      setUser(nextUser);
+      saveAndSetUser(nextUser);
       try {
         const profileRes = await userService.fetchPartnerProfile({
           uid: nextUser.uid,
@@ -48,7 +98,7 @@ function App() {
         const isPending = profileRes?.isPending || rawStatus.toLowerCase() === 'pending';
 
         if (isBlocked || isPending || rawStatus !== 'Active') {
-          setAccountStatus({
+          saveAndSetAccountStatus({
             status: isBlocked ? 'Blocked' : 'Pending',
             reason:
               profileRes?.reason ||
@@ -78,7 +128,7 @@ function App() {
               (profileRes as any)?.checklist,
           });
         } else {
-          setAccountStatus(null);
+          saveAndSetAccountStatus(null);
         }
       } catch (err: any) {
         console.warn('[App] Backend partner sync notice:', err?.message);
@@ -88,7 +138,7 @@ function App() {
           err?.isPending ||
           err?.status === 'Pending'
         ) {
-          setAccountStatus({
+          saveAndSetAccountStatus({
             status:
               err.isBlocked || err.status === 'Blocked' ? 'Blocked' : 'Pending',
             reason: err.reason || err.message,
@@ -97,10 +147,15 @@ function App() {
           });
         }
       } finally {
-        setCheckingAuth(false);
+        if (isMounted) {
+          setCheckingAuth(false);
+        }
       }
     });
-    return unsubscribe;
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   const handleSignOut = async () => {
@@ -109,6 +164,7 @@ function App() {
     } catch (e) {
       console.warn('[App] SignOut notice:', e);
     }
+    await sessionService.clearSession();
     setUser(null);
     setAccountStatus(null);
     setAuthScreen('welcome');
@@ -144,8 +200,8 @@ function App() {
           phoneNumber: profileRes?.data?.phone || phone,
           email: profileRes?.data?.email || email,
         };
-        setUser(activeUser);
-        setAccountStatus(null);
+        saveAndSetUser(activeUser);
+        saveAndSetAccountStatus(null);
         return { status: 'Active' };
       } else {
         const nextState = {
@@ -180,7 +236,7 @@ function App() {
             (profileRes as any)?.checklist ||
             accountStatus?.checklist,
         };
-        setAccountStatus(nextState);
+        saveAndSetAccountStatus(nextState);
         return nextState;
       }
     } catch (err: any) {
@@ -203,7 +259,7 @@ function App() {
           phone: accountStatus?.phone || phone,
           userId: accountStatus?.userId || uid,
         };
-        setAccountStatus(prev => ({ ...(prev || {}), ...nextState }));
+        saveAndSetAccountStatus(prev => ({ ...(prev || {}), ...nextState }));
         return nextState;
       }
       return null;
@@ -236,12 +292,12 @@ function App() {
         phoneNumber: updatedData?.phone || updatedData?.data?.phone || accountStatus?.phone || '',
         email: updatedData?.email || updatedData?.data?.email || accountStatus?.email || '',
       };
-      setUser(activeUser);
-      setAccountStatus(null);
+      saveAndSetUser(activeUser);
+      saveAndSetAccountStatus(null);
       return;
     }
 
-    setAccountStatus(prev => ({
+    saveAndSetAccountStatus(prev => ({
       ...(prev || {}),
       status: (rawStatus as any) || 'Pending',
       reason:
@@ -276,10 +332,10 @@ function App() {
     content = (
       <SignInScreen
         onBack={() => setAuthScreen('welcome')}
-        onAccountStatus={setAccountStatus}
+        onAccountStatus={saveAndSetAccountStatus}
         onLoginSuccess={activeUser => {
-          setUser(activeUser);
-          setAccountStatus(null);
+          saveAndSetUser(activeUser);
+          saveAndSetAccountStatus(null);
         }}
       />
     );

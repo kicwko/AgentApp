@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -172,54 +173,62 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   const [todayVisitsText, setTodayVisitsText] = useState('0 / 0');
   const [onTimeGateText, setOnTimeGateText] = useState('98%');
   const [weeklyEarnText, setWeeklyEarnText] = useState('₹0');
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
+  const loadDashboardData = useCallback(async () => {
     const cleanPhone = (user?.phoneNumber || '8800313434').replace(/\D/g, '').slice(-10);
     const agentId = cleanPhone || user?.email || user?.uid || '';
 
-    orderService
-      .getOrders({ agentId: agentId || undefined, limit: 50 })
-      .then(res => {
-        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-          setRecentOrders(res.data.slice(0, 4));
-          const metrics = calculateDashboardMetrics(res.data);
+    try {
+      const res = await orderService.getOrders({ agentId: agentId || undefined, limit: 50 });
+      if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        setRecentOrders(res.data.slice(0, 4));
+        const metrics = calculateDashboardMetrics(res.data);
+        setTodayVisitsText(metrics.visitsText);
+        setOnTimeGateText(metrics.gateText);
+        setWeeklyEarnText(metrics.earnText);
+      } else {
+        // If 0 returned for agentId filter, fetch without filter and resolve user orders
+        const allRes = await orderService.getOrders({ limit: 50 });
+        if (allRes && allRes.success && Array.isArray(allRes.data)) {
+          const userOrders = allRes.data.filter(
+            o =>
+              (cleanPhone &&
+                (o.agentPhone?.includes(cleanPhone) ||
+                  o.agentId?.includes(cleanPhone))) ||
+              (user?.email &&
+                (o.agentId?.includes(user.email) ||
+                  o.customer?.email === user.email)) ||
+              (o.agentName &&
+                user?.displayName &&
+                o.agentName.toLowerCase() ===
+                  user.displayName.toLowerCase())
+          );
+          const listToUse = userOrders.length > 0 ? userOrders : allRes.data;
+          setRecentOrders(listToUse.slice(0, 4));
+          const metrics = calculateDashboardMetrics(listToUse);
           setTodayVisitsText(metrics.visitsText);
           setOnTimeGateText(metrics.gateText);
           setWeeklyEarnText(metrics.earnText);
-        } else {
-          // If 0 returned for agentId filter, fetch without filter and resolve user orders
-          orderService
-            .getOrders({ limit: 50 })
-            .then(allRes => {
-              if (allRes && allRes.success && Array.isArray(allRes.data)) {
-                const userOrders = allRes.data.filter(
-                  o =>
-                    (cleanPhone &&
-                      (o.agentPhone?.includes(cleanPhone) ||
-                        o.agentId?.includes(cleanPhone))) ||
-                    (user?.email &&
-                      (o.agentId?.includes(user.email) ||
-                        o.customer?.email === user.email)) ||
-                    (o.agentName &&
-                      user?.displayName &&
-                      o.agentName.toLowerCase() ===
-                        user.displayName.toLowerCase())
-                );
-                const listToUse = userOrders.length > 0 ? userOrders : allRes.data;
-                setRecentOrders(listToUse.slice(0, 4));
-                const metrics = calculateDashboardMetrics(listToUse);
-                setTodayVisitsText(metrics.visitsText);
-                setOnTimeGateText(metrics.gateText);
-                setWeeklyEarnText(metrics.earnText);
-              }
-            })
-            .catch(() => {});
         }
-      })
-      .catch(err => {
-        console.warn('[DashboardScreen] Could not load live orders:', err?.message);
-      });
+      }
+    } catch (err: any) {
+      console.warn('[DashboardScreen] Could not load live orders:', err?.message);
+    }
   }, [user]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadDashboardData();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     if (orderState !== 'pending' || timeLeft <= 0) {
@@ -259,7 +268,15 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}>
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          colors={[colors.colorPrimary]}
+          tintColor={colors.colorPrimary}
+        />
+      }>
       {/* Real-time Incoming Order Alert (Bento Focal Item) */}
       {orderState !== 'declined' ? (
         <View
