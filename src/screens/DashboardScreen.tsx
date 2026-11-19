@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { GradientButton } from '../components/GradientButton';
 import { orderService, type BackendOrder } from '../services/orderService';
 
 const SAMPLE_JOB_IMAGE =
@@ -345,32 +346,28 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
                 <Text style={styles.declineButtonText}>Decline</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
+              <GradientButton
                 style={[styles.acceptButton, isExpired && styles.acceptButtonDisabled]}
                 onPress={handleAccept}
-                activeOpacity={0.85}
-                disabled={isExpired || orderState === 'locking'}>
-                {orderState === 'locking' ? (
-                  <>
-                    <ActivityIndicator color={colors.white} size="small" />
-                    <Text style={styles.acceptButtonText}>Locking Job...</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.acceptIcon}>✓</Text>
-                    <Text style={styles.acceptButtonText}>Accept Order</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+                disabled={isExpired || orderState === 'locking'}
+                loading={orderState === 'locking'}
+                loadingText="Locking Job..."
+                icon={<Text style={styles.acceptIcon}>✓</Text>}
+                title="Accept Order"
+                textStyle={styles.acceptButtonText}
+              />
             </View>
           )}
         </View>
       ) : (
         <View style={styles.declinedNoticeCard}>
           <Text style={styles.declinedText}>Order dismissed. Listening for nearby tasks...</Text>
-          <TouchableOpacity onPress={handleResetOrder} style={styles.reopenButton}>
-            <Text style={styles.reopenButtonText}>Simulate New Job</Text>
-          </TouchableOpacity>
+          <GradientButton
+            onPress={handleResetOrder}
+            style={styles.reopenButton}
+            title="Simulate New Job"
+            textStyle={styles.reopenButtonText}
+          />
         </View>
       )}
 
@@ -744,33 +741,34 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   },
           declineButton: {
             flex: 1,
-          height: 44,
-          borderRadius: 10,
-          backgroundColor: colors.surfaceContainer,
-          alignItems: 'center',
-          justifyContent: 'center',
-  },
+            height: 44,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.outlineVariant,
+            backgroundColor: colors.surfaceContainerLow,
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
           declineButtonText: {
             fontFamily: typography.fontFamily,
-          fontSize: 14,
-          fontWeight: typography.weightSemibold,
-          color: colors.onSurface,
-  },
+            fontSize: 14,
+            fontWeight: typography.weightSemibold,
+            color: colors.onSurface,
+          },
           acceptButton: {
             flex: 2,
-          height: 44,
-          borderRadius: 10,
-          backgroundColor: colors.buttonPrimary,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 6,
-          shadowColor: colors.primary,
-          shadowOffset: {width: 0, height: 3 },
-          shadowOpacity: 0.3,
-          shadowRadius: 6,
-          elevation: 3,
-  },
+            height: 44,
+            borderRadius: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            shadowColor: colors.primary,
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.3,
+            shadowRadius: 6,
+            elevation: 3,
+          },
           acceptButtonDisabled: {
             opacity: 0.5,
   },
@@ -819,17 +817,16 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
           color: colors.onSurfaceVariant,
   },
           reopenButton: {
-            paddingHorizontal: 14,
-          paddingVertical: 6,
-          borderRadius: 8,
-          backgroundColor: colors.surfaceContainer,
-  },
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            borderRadius: 8,
+          },
           reopenButtonText: {
             fontFamily: typography.fontFamily,
-          fontSize: 12,
-          fontWeight: typography.weightSemibold,
-          color: colors.primary,
-  },
+            fontSize: 12,
+            fontWeight: typography.weightSemibold,
+            color: colors.white,
+          },
           metricsRibbonRow: {
     flexDirection: 'row',
     gap: 8,

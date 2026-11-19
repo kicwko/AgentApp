@@ -17,6 +17,9 @@ type Props = {
   onPressLogo?: () => void;
   title?: string;
   showDutyToggle?: boolean;
+  showProfile?: boolean;
+  onSignOut?: () => void;
+  rightAction?: React.ReactNode;
 };
 
 export function AppHeader({
@@ -25,6 +28,9 @@ export function AppHeader({
   onPressProfile,
   onPressLogo,
   showDutyToggle = true,
+  showProfile = true,
+  onSignOut,
+  rightAction,
 }: Props) {
   const insets = useSafeAreaInsets();
 
@@ -39,8 +45,21 @@ export function AppHeader({
           style={styles.headerLogo}
         />
 
-        {/* Right actions: Duty toggle + Profile avatar */}
+        {/* Right actions: Duty toggle + Profile avatar or Sign Out */}
         <View style={styles.actionsGroup}>
+          {rightAction}
+
+          {onSignOut && (
+            <TouchableOpacity
+              style={styles.signOutButton}
+              onPress={onSignOut}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Sign Out">
+              <Text style={styles.signOutText}>Sign Out</Text>
+            </TouchableOpacity>
+          )}
+
           {showDutyToggle && (
             <TouchableOpacity
               style={styles.dutyButton}
@@ -60,22 +79,24 @@ export function AppHeader({
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity
-            style={styles.profileWrapper}
-            onPress={onPressProfile}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="User profile">
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarIcon}>👤</Text>
-            </View>
-            <View
-              style={[
-                styles.avatarStatusBadge,
-                isOnDuty ? styles.statusDotOn : styles.statusDotOff,
-              ]}
-            />
-          </TouchableOpacity>
+          {showProfile && !onSignOut && (
+            <TouchableOpacity
+              style={styles.profileWrapper}
+              onPress={onPressProfile}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="User profile">
+              <View style={styles.avatarCircle}>
+                <Text style={styles.avatarIcon}>👤</Text>
+              </View>
+              <View
+                style={[
+                  styles.avatarStatusBadge,
+                  isOnDuty ? styles.statusDotOn : styles.statusDotOff,
+                ]}
+              />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </View>
@@ -103,6 +124,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  signOutButton: {
+    minHeight: 34,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    backgroundColor: colors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  signOutText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: typography.weightSemibold,
+    color: colors.onSurfaceVariant,
   },
   dutyButton: {
     minHeight: 36,
@@ -160,4 +198,3 @@ const styles = StyleSheet.create({
     borderColor: colors.surface,
   },
 });
-

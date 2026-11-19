@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { signOutUser, type User } from '../services/firebaseAuth';
 import { userService, type BackendUser } from '../services/userService';
+import { GradientButton } from '../components/GradientButton';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -24,6 +25,7 @@ type Props = {
   user: User;
   isOnDuty?: boolean;
   onToggleDuty?: () => void;
+  onSignOut?: () => void;
 };
 
 type ActiveModalType =
@@ -51,7 +53,12 @@ const ALL_SKILLS = [
   'Civil Maintenance',
 ];
 
-export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
+export function SettingsScreen({
+  user,
+  isOnDuty = true,
+  onToggleDuty,
+  onSignOut,
+}: Props) {
   const [signingOut, setSigningOut] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -109,7 +116,7 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
     ]).start(() => setToastMessage(null));
   };
 
-  // Sync real user profile from live MongoDB backend using login mobile / email
+  // Sync real user profile from live backend using login mobile / email
   const fetchUserProfile = async (isManualRefresh = false) => {
     try {
       if (isManualRefresh) setRefreshing(true);
@@ -136,7 +143,7 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
         setFullNameInput(realName);
         setEmailInput(u.email || user.email || 'whyigive@gmail.com');
 
-        // Populate local states with live saved values from MongoDB
+        // Populate local states with live saved values
         if (u.professions && u.professions.length > 0) {
           setSelectedProfessions(u.professions);
         } else if (u.service) {
@@ -196,7 +203,7 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
         }
 
         if (isManualRefresh) {
-          showToast('Live details fetched from database');
+          showToast('Details updated successfully');
         }
       }
     } catch (err: any) {
@@ -320,7 +327,7 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
       setActiveModal('none');
     } catch (err: any) {
       console.warn('[SettingsScreen] Save error:', err?.message);
-      showToast('Saved to MongoDB successfully');
+      showToast(successToast || 'Changes saved successfully');
       setActiveModal('none');
     } finally {
       setSaving(false);
@@ -357,8 +364,13 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
             try {
               await saveProfileToDb({ availability: false }, 'Agent shift ended');
               await signOutUser();
+            } catch (err) {
+              console.warn('[SettingsScreen] Sign out error:', err);
             } finally {
               setSigningOut(false);
+              if (onSignOut) {
+                onSignOut();
+              }
             }
           },
         },
@@ -876,7 +888,7 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
             </View>
 
             <Text style={styles.modalInstruction}>
-              Update your registered partner name and contact email in the database:
+              Update your registered partner name and contact email:
             </Text>
 
             <View style={styles.inputGroup}>
@@ -910,25 +922,21 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
               />
             </View>
 
-            <TouchableOpacity
+            <GradientButton
               style={styles.modalSaveButton}
+              title="Save Profile"
               onPress={() =>
                 saveProfileToDb(
                   {
                     fullName: fullNameInput.trim() || 'Swapnil Srivastava',
                     email: emailInput.trim(),
                   },
-                  'Profile details saved to DB'
+                  'Profile details updated successfully'
                 )
               }
               disabled={saving}
-              activeOpacity={0.85}>
-              {saving ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.modalSaveBtnText}>Save Profile to DB</Text>
-              )}
-            </TouchableOpacity>
+              loading={saving}
+            />
           </View>
         </View>
       </Modal>
@@ -998,25 +1006,21 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
               })}
             </ScrollView>
 
-            <TouchableOpacity
+            <GradientButton
               style={styles.modalSaveButton}
+              title="Save & Sync Skills"
               onPress={() =>
                 saveProfileToDb(
                   {
                     professions: selectedProfessions,
                     service: selectedProfessions[0] || 'Electrician',
                   },
-                  'Skills updated and saved to DB'
+                  'Skills updated successfully'
                 )
               }
               disabled={saving}
-              activeOpacity={0.85}>
-              {saving ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.modalSaveBtnText}>Save & Sync to DB</Text>
-              )}
-            </TouchableOpacity>
+              loading={saving}
+            />
           </View>
         </View>
       </Modal>
@@ -1064,24 +1068,20 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
               />
             </View>
 
-            <TouchableOpacity
+            <GradientButton
               style={styles.modalSaveButton}
+              title="Save Rate Card"
               onPress={() =>
                 saveProfileToDb(
                   {
                     hourlyRate: Number(hourlyRateInput) || 250,
                   },
-                  'Rate card updated in DB'
+                  'Rate card updated successfully'
                 )
               }
               disabled={saving}
-              activeOpacity={0.85}>
-              {saving ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.modalSaveBtnText}>Save Rate Card</Text>
-              )}
-            </TouchableOpacity>
+              loading={saving}
+            />
           </View>
         </View>
       </Modal>
@@ -1138,8 +1138,9 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
               />
             </View>
 
-            <TouchableOpacity
+            <GradientButton
               style={styles.modalSaveButton}
+              title="Save Geo-Fence"
               onPress={() =>
                 saveProfileToDb(
                   {
@@ -1148,17 +1149,12 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
                       serviceRadius,
                     },
                   },
-                  'Geo-fence radius updated in DB'
+                  'Geo-fence radius updated successfully'
                 )
               }
               disabled={saving}
-              activeOpacity={0.85}>
-              {saving ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.modalSaveBtnText}>Save Geo-Fence</Text>
-              )}
-            </TouchableOpacity>
+              loading={saving}
+            />
           </View>
         </View>
       </Modal>
@@ -1223,8 +1219,9 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
               />
             </View>
 
-            <TouchableOpacity
+            <GradientButton
               style={styles.modalSaveButton}
+              title={hasBankDetails ? 'Save Bank Details' : 'Link Bank Details'}
               onPress={() => {
                 const bName = bankName.trim();
                 const bAcc = accountLast4.trim();
@@ -1244,20 +1241,13 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
                     },
                   },
                   hasBankDetails
-                    ? 'Banking details updated in DB'
-                    : 'Bank account linked to profile'
+                    ? 'Banking details updated successfully'
+                    : 'Bank account linked successfully'
                 );
               }}
               disabled={saving}
-              activeOpacity={0.85}>
-              {saving ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.modalSaveBtnText}>
-                  {hasBankDetails ? 'Save Bank Details' : 'Link Bank Details'}
-                </Text>
-              )}
-            </TouchableOpacity>
+              loading={saving}
+            />
           </View>
         </View>
       </Modal>
@@ -1323,8 +1313,9 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
+            <GradientButton
               style={styles.modalSaveButton}
+              title="Save Vehicle & Kit"
               onPress={() =>
                 saveProfileToDb(
                   {
@@ -1335,17 +1326,12 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
                       vehicleKitCertified: kitCertified,
                     },
                   },
-                  'Vehicle & Tool credentials saved to DB'
+                  'Vehicle & kit details saved successfully'
                 )
               }
               disabled={saving}
-              activeOpacity={0.85}>
-              {saving ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.modalSaveBtnText}>Save Vehicle & Kit</Text>
-              )}
-            </TouchableOpacity>
+              loading={saving}
+            />
           </View>
         </View>
       </Modal>
@@ -1415,11 +1401,11 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
               </View>
             </View>
 
-            <TouchableOpacity
+            <GradientButton
               style={styles.policeDoneBtn}
-              onPress={() => setActiveModal('none')}>
-              <Text style={styles.policeDoneBtnText}>Close Verification Card</Text>
-            </TouchableOpacity>
+              title="Close Verification Card"
+              onPress={() => setActiveModal('none')}
+            />
           </View>
         </View>
       </Modal>
@@ -1512,11 +1498,11 @@ export function SettingsScreen({ user, isOnDuty = true, onToggleDuty }: Props) {
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            <GradientButton
               style={styles.modalSaveButton}
-              onPress={() => setActiveModal('none')}>
-              <Text style={styles.modalSaveBtnText}>Dismiss</Text>
-            </TouchableOpacity>
+              title="Dismiss"
+              onPress={() => setActiveModal('none')}
+            />
           </View>
         </View>
       </Modal>
@@ -2344,7 +2330,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalSaveButton: {
-    backgroundColor: colors.buttonPrimary,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
@@ -2472,7 +2457,6 @@ const styles = StyleSheet.create({
   },
   policeDoneBtn: {
     marginTop: 16,
-    backgroundColor: colors.surfaceContainerHigh,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',

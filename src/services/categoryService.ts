@@ -22,7 +22,7 @@ export interface Category {
 }
 
 export const categoryService = {
-  // Fetch all service categories from MongoDB
+  // Fetch all service categories from backend
   getCategories: async (): Promise<ApiResponse<Category[]>> => {
     return apiClient.get<Category[]>(API_CONFIG.endpoints.categories);
   },

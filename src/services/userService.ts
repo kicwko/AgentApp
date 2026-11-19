@@ -3,7 +3,9 @@ import { API_CONFIG } from '../config/api';
 
 export interface BackendUser {
   _id: string;
+  id?: string;
   fullName?: string;
+  userName?: string;
   email?: string;
   phone?: string;
   agentId?: string;
@@ -27,6 +29,14 @@ export interface BackendUser {
   vehicleNumber?: string;
   photo?: string;
   avatar?: string;
+  bankName?: string;
+  accountNumber?: string;
+  upiId?: string;
+  bank?: {
+    name?: string;
+    accountNumber?: string;
+    upiId?: string;
+  };
   joinDate?: string;
   curAddress?: string;
   permAddress?: string;
@@ -39,6 +49,35 @@ export interface BackendUser {
     latitude?: number | null;
     longitude?: number | null;
   };
+  bankDetails?: {
+    accountHolderName?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    bankName?: string;
+    branchName?: string;
+    upiId?: string;
+    phone?: string;
+    documentData?: string;
+    documentName?: string;
+    verified?: boolean;
+    updatedAt?: string;
+  };
+  policeVerification?: {
+    status?: string;
+    certificateNumber?: string;
+    documentData?: string;
+    documentName?: string;
+    policeStation?: string;
+    issuedDate?: string;
+    expiryDate?: string;
+    remarks?: string;
+    updatedAt?: string;
+  };
+  blockReason?: string;
+  pendingReason?: string;
+  reason?: string;
+  isBlocked?: boolean;
+  isPending?: boolean;
   preferences?: {
     instantPayout?: boolean;
     newsletter?: boolean;
@@ -55,8 +94,33 @@ export interface BackendUser {
   updatedAt?: string;
 }
 
+export interface PendingDocumentsPayload {
+  picture?: string;
+  photo?: string;
+  avatar?: string;
+  bankDetails?: {
+    accountHolderName?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    bankName?: string;
+    branchName?: string;
+    upiId?: string;
+    phone?: string;
+    documentData?: string;
+    documentName?: string;
+  };
+  policeVerification?: {
+    certificateNumber?: string;
+    documentData?: string;
+    documentName?: string;
+    policeStation?: string;
+    issuedDate?: string;
+    status?: string;
+  };
+}
+
 export const userService = {
-  // Fetch real live partner profile from MongoDB by phone, email, or uid
+  // Fetch real live partner profile from backend by phone, email, or uid
   fetchPartnerProfile: async (params: {
     phone?: string | null;
     email?: string | null;
@@ -82,29 +146,40 @@ export const userService = {
           userType: 'agent',
         }
       );
-      if (syncRes && syncRes.data && syncRes.data.fullName) {
+
+      // Return immediately if user found, or if user is Blocked or Pending
+      if (
+        syncRes &&
+        (syncRes.status === 'Pending' ||
+          syncRes.status === 'Blocked' ||
+          syncRes.isPending ||
+          syncRes.isBlocked ||
+          (syncRes.data && (syncRes.data.fullName || syncRes.data.status)))
+      ) {
         return syncRes;
       }
-    } catch (e) {
-      // Continue to register lookup fallback
+    } catch (e: any) {
+      if (e?.isBlocked || e?.status === 'Blocked' || e?.isPending || e?.status === 'Pending') {
+        throw e;
+      }
     }
 
     return apiClient.post<BackendUser>(API_CONFIG.endpoints.registerUser, {
       phone: cleanPhone || undefined,
       email: userEmail,
       firebaseUid: params.uid || undefined,
-      fullName: 'Swapnil Srivastava',
+      fullName: 'Agent Partner',
     });
   },
 
-  // Save or update partner profile directly in MongoDB (real-time sync)
+  // Save or update partner profile directly in backend database (real-time sync)
   savePartnerProfile: async (
     userData: Partial<BackendUser>
   ): Promise<ApiResponse<BackendUser>> => {
     return apiClient.post<BackendUser>(API_CONFIG.endpoints.registerUser, userData);
   },
 
-  // Sync or register Firebase / Google authenticated user with backend MongoDB
+  // Sync or register Firebase / Google authenticated user with backend database
   syncFirebaseUser: async (payload: {
     email?: string | null;
     displayName?: string | null;
@@ -117,6 +192,66 @@ export const userService = {
       ...payload,
       userType: payload.userType || 'agent',
     });
+  },
+
+  // Fetch current user's 3 mandatory verification documents checklist
+  getPendingDocuments: async (tokenOrUid?: string): Promise<ApiResponse<any>> => {
+    const headers: Record<string, string> = {};
+    if (tokenOrUid) {
+      headers['Authorization'] = `Bearer ${tokenOrUid}`;
+      if (tokenOrUid.match(/^[0-9a-fA-F]{24}$/)) {
+        headers['x-user-id'] = tokenOrUid;
+      }
+      const rawDigits = tokenOrUid.replace(/\D/g, '').slice(-10);
+      if (rawDigits.length === 10) {
+        headers['x-user-phone'] = rawDigits;
+      }
+      if (tokenOrUid.includes('@')) {
+        headers['x-user-email'] = tokenOrUid;
+      }
+    }
+    return apiClient.get(API_CONFIG.endpoints.pendingDocuments, undefined, { headers });
+  },
+
+  // Submit or update the 3 mandatory verification documents (Selfie, Bank Details, Police Verification)
+  updatePendingDocuments: async (
+    payload: PendingDocumentsPayload,
+    tokenOrUid?: string
+  ): Promise<ApiResponse<any>> => {
+    const headers: Record<string, string> = {};
+    if (tokenOrUid) {
+      headers['Authorization'] = `Bearer ${tokenOrUid}`;
+      if (tokenOrUid.match(/^[0-9a-fA-F]{24}$/)) {
+        headers['x-user-id'] = tokenOrUid;
+      }
+      const rawDigits = tokenOrUid.replace(/\D/g, '').slice(-10);
+      if (rawDigits.length === 10) {
+        headers['x-user-phone'] = rawDigits;
+      }
+      if (tokenOrUid.includes('@')) {
+        headers['x-user-email'] = tokenOrUid;
+      }
+    }
+    return apiClient.put(API_CONFIG.endpoints.pendingDocuments, payload, { headers });
+  },
+
+  // Send login OTP to mobile number
+  loginSendOtp: async (mobile: string): Promise<ApiResponse<any>> => {
+    return apiClient.post(API_CONFIG.endpoints.loginSendOtp, { mobile });
+  },
+
+  // Verify login OTP for mobile number
+  loginVerifyOtp: async (mobile: string, otp: string): Promise<ApiResponse<any>> => {
+    return apiClient.post(API_CONFIG.endpoints.loginVerifyOtp, { mobile, otp });
+  },
+
+  // Universal user login by email, mobile, or firebaseUid
+  loginUser: async (payload: {
+    email?: string;
+    mobile?: string;
+    firebaseUid?: string;
+  }): Promise<ApiResponse<any>> => {
+    return apiClient.post(API_CONFIG.endpoints.loginUser, payload);
   },
 
   // Check if partner already exists

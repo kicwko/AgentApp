@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { GradientButton } from '../components/GradientButton';
 import { orderService, type BackendOrder } from '../services/orderService';
 import type { User } from '../services/firebaseAuth';
 
@@ -477,13 +478,13 @@ export function OrdersScreen({ user }: { user?: User } = {}) {
             </View>
 
             <View style={styles.statementButtonRow}>
-              <TouchableOpacity
+              <GradientButton
                 style={styles.downloadPdfButton}
                 onPress={() => showToast('Downloading October PDF statement...')}
                 activeOpacity={0.85}>
                 <Text style={styles.pdfButtonIcon}>📥</Text>
                 <Text style={styles.downloadPdfText}>Download PDF</Text>
-              </TouchableOpacity>
+              </GradientButton>
 
               <TouchableOpacity
                 style={styles.exportExcelButton}
@@ -626,14 +627,15 @@ export function OrdersScreen({ user }: { user?: User } = {}) {
               <Text style={styles.emptySubtitle}>
                 No orders match your filter. Pull to refresh to check for new assignments.
               </Text>
-              <TouchableOpacity
+              <GradientButton
                 style={styles.resetFiltersButton}
                 onPress={() => {
                   setSearchQuery('');
                   setActiveFilter('all');
-                }}>
-                <Text style={styles.resetFiltersText}>Reset All Filters</Text>
-              </TouchableOpacity>
+                }}
+                title="Reset All Filters"
+                textStyle={styles.resetFiltersText}
+              />
             </View>
           ) : (
             filteredOrders.map(order => {
@@ -732,7 +734,7 @@ export function OrdersScreen({ user }: { user?: User } = {}) {
 
                     {/* Action Buttons */}
                     <View style={styles.activeActionRow}>
-                      <TouchableOpacity
+                      <GradientButton
                         style={styles.viewGatePassButton}
                         onPress={() => openGatePassModal(order)}
                         activeOpacity={0.85}>
@@ -740,7 +742,7 @@ export function OrdersScreen({ user }: { user?: User } = {}) {
                         <Text style={styles.viewGatePassText}>
                           View Address & Gate Pass
                         </Text>
-                      </TouchableOpacity>
+                      </GradientButton>
 
                       <TouchableOpacity
                         style={styles.infoSheetButton}
@@ -982,13 +984,13 @@ export function OrdersScreen({ user }: { user?: User } = {}) {
 
             {/* Modal Actions */}
             <View style={styles.modalActionRow}>
-              <TouchableOpacity
+              <GradientButton
                 style={styles.startNavButton}
                 onPress={handleStartNavigation}
                 activeOpacity={0.85}>
                 <Text style={styles.startNavIcon}>🧭</Text>
                 <Text style={styles.startNavText}>Start Navigation</Text>
-              </TouchableOpacity>
+              </GradientButton>
 
               <TouchableOpacity
                 style={styles.doneModalButton}
@@ -1132,13 +1134,13 @@ export function OrdersScreen({ user }: { user?: User } = {}) {
 
             {/* Bottom Actions */}
             <View style={styles.sheetActionRow}>
-              <TouchableOpacity
+              <GradientButton
                 style={styles.sheetDownloadPdfBtn}
                 onPress={() => showToast('Downloading Tax Invoice PDF...')}
                 activeOpacity={0.85}>
                 <Text style={styles.downloadPdfIcon}>📥</Text>
                 <Text style={styles.sheetDownloadPdfText}>Download Invoice PDF</Text>
-              </TouchableOpacity>
+              </GradientButton>
 
               <TouchableOpacity
                 style={styles.sheetDismissButton}
@@ -1368,7 +1370,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 42,
     borderRadius: 10,
-    backgroundColor: colors.buttonPrimary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1775,7 +1776,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 42,
     borderRadius: 10,
-    backgroundColor: colors.buttonPrimary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2045,7 +2045,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 9,
     borderRadius: 10,
-    backgroundColor: colors.primaryContainer,
   },
   resetFiltersText: {
     fontFamily: typography.fontFamily,
@@ -2290,7 +2289,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 44,
     borderRadius: 12,
-    backgroundColor: colors.buttonPrimary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2556,7 +2554,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 44,
     borderRadius: 12,
-    backgroundColor: colors.primaryContainer,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
