@@ -26,6 +26,7 @@ export const API_CONFIG = {
     loginVerifyOtp: '/users/login/verify-otp',
     loginUser: '/users/login',
     pendingDocuments: '/users/me/pending-documents',
+    faceMatch: '/users/face-match',
     locationGeocode: '/location/geocode',
   },
 };

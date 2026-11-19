@@ -37,3 +37,16 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   default: mockAsyncStorage,
   ...mockAsyncStorage,
 }));
+
+jest.mock('react-native-image-picker', () => ({
+  launchCamera: jest.fn(() =>
+    Promise.resolve({
+      assets: [{ uri: 'file://mock/camera.jpg', fileName: 'camera.jpg', type: 'image/jpeg', base64: 'mock_base64' }],
+    })
+  ),
+  launchImageLibrary: jest.fn(() =>
+    Promise.resolve({
+      assets: [{ uri: 'file://mock/gallery.jpg', fileName: 'gallery.jpg', type: 'image/jpeg', base64: 'mock_base64' }],
+    })
+  ),
+}));

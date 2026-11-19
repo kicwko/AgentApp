@@ -419,22 +419,14 @@ export function SignInScreen({ onBack, onAccountStatus, onLoginSuccess }: Props)
             <Text style={styles.label}>Mobile Number</Text>
             <View style={styles.phoneInputRow}>
               <TextInput
-                style={styles.countryCodeInput}
-                value={countryCode}
-                onChangeText={setCountryCode}
-                keyboardType="phone-pad"
-                maxLength={5}
-                placeholder="+91"
-                placeholderTextColor={colors.textMuted}
-              />
-              <TextInput
-                style={styles.phoneInput}
+                style={[styles.phoneInput, sendingOtp && styles.phoneInputDisabled]}
                 placeholder="10-digit mobile number"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="phone-pad"
                 maxLength={10}
                 value={phoneNumber}
                 onChangeText={text => setPhoneNumber(text.replace(/\D/g, '').slice(0, 10))}
+                editable={!sendingOtp}
                 autoFocus
               />
             </View>
@@ -442,7 +434,7 @@ export function SignInScreen({ onBack, onAccountStatus, onLoginSuccess }: Props)
             <GradientButton
               title="Send OTP"
               onPress={handleSendOtp}
-              disabled={sendingOtp}
+              disabled={sendingOtp || phoneNumber.length < 10}
               loading={sendingOtp}
               loadingText="Sending OTP..."
               style={styles.primaryButton}
@@ -524,6 +516,23 @@ export function SignInScreen({ onBack, onAccountStatus, onLoginSuccess }: Props)
           By signing in, you agree to Kweecko's Partner Terms of Service and Privacy Policy.
         </Text>
       </ScrollView>
+
+      {/* Loading Overlay */}
+      {(sendingOtp || verifyingOtp) && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingOverlayCard}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingOverlayTitle}>
+              {sendingOtp ? 'Sending Verification OTP...' : 'Verifying Code & Signing In...'}
+            </Text>
+            <Text style={styles.loadingOverlaySubtitle}>
+              {sendingOtp
+                ? 'Please wait while we send the verification code to your mobile number.'
+                : 'Please wait while we verify your account.'}
+            </Text>
+          </View>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -652,6 +661,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textDark,
   },
+  phoneInputDisabled: {
+    backgroundColor: '#EAEDFF',
+    color: '#777587',
+    opacity: 0.7,
+  },
   otpSection: {
     marginBottom: 8,
   },
@@ -773,5 +787,49 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     marginTop: 32,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(19, 27, 46, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+    elevation: 20,
+    paddingHorizontal: 24,
+  },
+  loadingOverlayCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: colors.white,
+    borderRadius: 20,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  loadingOverlayTitle: {
+    fontFamily: typography.fontFamily,
+    fontWeight: typography.weightBold,
+    fontSize: 16,
+    color: colors.textDark,
+    marginTop: 14,
+    textAlign: 'center',
+  },
+  loadingOverlaySubtitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 17,
   },
 });

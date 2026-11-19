@@ -30,6 +30,14 @@ jest.mock('../src/services/userService', () => ({
         policeVerification: { submitted: true },
       },
     }),
+    faceMatch: jest.fn().mockResolvedValue({
+      success: true,
+      matched: true,
+      isMatched: true,
+      confidence: 88.42,
+      threshold: 69.10,
+      message: 'Face verified successfully with Aadhaar document! Profile photo has been updated in database.',
+    }),
   },
 }));
 
@@ -188,11 +196,11 @@ describe('AccountStatusScreen', () => {
     const textNodes = root.findAllByType('Text').map((node: any) => extractAllText(node.props.children));
     const joined = textNodes.join(' ');
 
-    // Compact action buttons should be visible
-    expect(joined).toContain('Retake');
+    // Freeze badge is shown for validated photo (update CTA removed) while Edit/Change remain for bank/police
+    expect(joined).toContain('Freeze');
     expect(joined).toContain('Edit');
     expect(joined).toContain('Change');
-    expect(joined).toContain('Photo Captured & Uploaded');
+    expect(joined).toContain('Photo Captured & Validated');
     expect(joined).toContain('Cheque Uploaded');
 
     // "Upload Details" buttons should NOT be present when all 3 are already done
@@ -458,5 +466,135 @@ describe('AccountStatusScreen', () => {
     expect(onSubmittedMock).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'Active' })
     );
+  });
+
+  it('handles face match success and displays verification badge on screen', async () => {
+    (userService.faceMatch as jest.Mock).mockResolvedValueOnce({
+      success: true,
+      matched: true,
+      isMatched: true,
+      confidence: 88.42,
+      threshold: 69.1,
+      message: 'Face verified successfully with Aadhaar document!',
+    });
+
+    let renderer: any;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <AccountStatusScreen
+          accountData={{
+            status: 'Pending',
+            userName: 'Face Match Partner',
+            phone: '9625650723',
+            checklist: {
+              picture: { submitted: false },
+              bankDetails: { submitted: true },
+              policeVerification: { submitted: true },
+            },
+          }}
+          onSignOut={jest.fn()}
+        />
+      );
+    });
+
+    const root = renderer.root;
+    // Find and press capture selfie
+    const captureBtns = root.findAll((n: any) => typeof n.props?.onPress === 'function');
+    const openCaptureBtn = captureBtns.find((btn: any) => {
+      const texts = extractAllText(btn.props?.children);
+      return texts.includes('Capture Live Selfie');
+    });
+
+    expect(openCaptureBtn).toBeTruthy();
+
+    await ReactTestRenderer.act(async () => {
+      openCaptureBtn.props.onPress();
+    });
+
+    // Press Take Photo in modal
+    const modalCameraBtn = root.findAll((n: any) => typeof n.props?.onPress === 'function').find((btn: any) => {
+      const texts = extractAllText(btn.props?.children);
+      return texts.includes('Take Photo with Camera');
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await modalCameraBtn.props.onPress();
+    });
+
+    expect(userService.faceMatch).toHaveBeenCalledWith(
+      expect.stringContaining('data:image/jpeg;base64,'),
+      expect.anything()
+    );
+
+    const textNodes = root.findAllByType('Text').map((node: any) => extractAllText(node.props.children));
+    const joined = textNodes.join(' ');
+    expect(joined).toContain('Face Match Verified');
+    expect(joined).toContain('88.4% Match');
+    // Freeze title shown above image & update CTA removed
+    expect(joined).toContain('Freeze');
+    expect(joined).not.toContain('Retake');
+    expect(joined).not.toContain('Face++');
+    expect(joined).not.toContain('Validate Face');
+  });
+
+  it('handles face match failure and displays error message with retry button on screen', async () => {
+    (userService.faceMatch as jest.Mock).mockResolvedValueOnce({
+      success: false,
+      matched: false,
+      isMatched: false,
+      confidence: 42.1,
+      threshold: 69.1,
+      message: 'Face did not match with Aadhaar card photo. Please upload a clear, front-facing picture.',
+    });
+
+    let renderer: any;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <AccountStatusScreen
+          accountData={{
+            status: 'Pending',
+            userName: 'Face Mismatch Partner',
+            phone: '9625650723',
+            checklist: {
+              picture: { submitted: false },
+              bankDetails: { submitted: true },
+              policeVerification: { submitted: true },
+            },
+          }}
+          onSignOut={jest.fn()}
+        />
+      );
+    });
+
+    const root = renderer.root;
+    const captureBtns = root.findAll((n: any) => typeof n.props?.onPress === 'function');
+    const openCaptureBtn = captureBtns.find((btn: any) => {
+      const texts = extractAllText(btn.props?.children);
+      return texts.includes('Capture Live Selfie');
+    });
+
+    await ReactTestRenderer.act(async () => {
+      openCaptureBtn.props.onPress();
+    });
+
+    const modalCameraBtn = root.findAll((n: any) => typeof n.props?.onPress === 'function').find((btn: any) => {
+      const texts = extractAllText(btn.props?.children);
+      return texts.includes('Take Photo with Camera');
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await modalCameraBtn.props.onPress();
+    });
+
+    const textNodes = root.findAllByType('Text').map((node: any) => extractAllText(node.props.children));
+    const joined = textNodes.join(' ');
+    expect(joined).toContain('Face Verification Failed');
+    expect(joined).toContain('Face did not match with Aadhaar card photo');
+    // Retake CTA near pic icon is present, but error box duplicate buttons & Validate CTA are removed
+    expect(joined).toContain('Retake');
+    expect(joined).not.toContain('Retake Picture');
+    expect(joined).not.toContain('Retry Match');
+    expect(joined).not.toContain('Validate Face');
+    expect(joined).not.toContain('Face++');
   });
 });

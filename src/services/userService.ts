@@ -119,6 +119,22 @@ export interface PendingDocumentsPayload {
   };
 }
 
+export interface FaceMatchResponse {
+  success?: boolean;
+  matched?: boolean;
+  isMatched?: boolean;
+  confidence?: number;
+  threshold?: number;
+  message?: string;
+  error?: string;
+  data?: {
+    user?: Partial<BackendUser>;
+    confidence?: number;
+    thresholds?: Record<string, number>;
+    [key: string]: any;
+  };
+}
+
 export const userService = {
   // Fetch real live partner profile from backend by phone, email, or uid
   fetchPartnerProfile: async (params: {
@@ -233,6 +249,32 @@ export const userService = {
       }
     }
     return apiClient.put(API_CONFIG.endpoints.pendingDocuments, payload, { headers });
+  },
+
+  // Match camera photo with Aadhaar document via Face++ API
+  faceMatch: async (
+    image: string,
+    tokenOrUid?: string
+  ): Promise<ApiResponse<FaceMatchResponse>> => {
+    const headers: Record<string, string> = {};
+    if (tokenOrUid) {
+      headers['Authorization'] = `Bearer ${tokenOrUid}`;
+      if (tokenOrUid.match(/^[0-9a-fA-F]{24}$/)) {
+        headers['x-user-id'] = tokenOrUid;
+      }
+      const rawDigits = tokenOrUid.replace(/\D/g, '').slice(-10);
+      if (rawDigits.length === 10) {
+        headers['x-user-phone'] = rawDigits;
+      }
+      if (tokenOrUid.includes('@')) {
+        headers['x-user-email'] = tokenOrUid;
+      }
+    }
+    return apiClient.post<FaceMatchResponse>(
+      API_CONFIG.endpoints.faceMatch,
+      { image },
+      { headers }
+    );
   },
 
   // Send login OTP to mobile number

@@ -6,6 +6,11 @@ export interface ApiResponse<T = any> {
   status?: string;
   isPending?: boolean;
   isBlocked?: boolean;
+  matched?: boolean;
+  isMatched?: boolean;
+  confidence?: number;
+  threshold?: number;
+  error?: string;
   reason?: string;
   pendingReason?: string;
   data?: T;

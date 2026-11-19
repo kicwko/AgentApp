@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { AppHeader } from '../components/AppHeader';
 import { GradientButton } from '../components/GradientButton';
+import { mediaPickerService, type PickedMediaResult } from '../services/mediaPickerService';
 import { userService, type PendingDocumentsPayload } from '../services/userService';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -142,6 +143,15 @@ export function AccountStatusScreen({
     Boolean(accountData.checklist?.picture?.submitted)
   );
   const [uploadingSelfie, setUploadingSelfie] = useState<boolean>(false);
+  const [faceValidating, setFaceValidating] = useState<boolean>(false);
+  const [faceMatchResult, setFaceMatchResult] = useState<{
+    status: 'idle' | 'validating' | 'success' | 'error';
+    matched?: boolean;
+    confidence?: number;
+    threshold?: number;
+    message?: string;
+    error?: string;
+  } | null>(null);
 
   // 2. Bank Details
   const [accountHolderName, setAccountHolderName] = useState<string>(
@@ -191,6 +201,13 @@ export function AccountStatusScreen({
   });
 
   const [hasUserEdited, setHasUserEdited] = useState<boolean>(false);
+
+  // Freeze image state: true when photo is verified with Aadhaar (locks image & removes update CTA)
+  const isImageValidated = Boolean(
+    faceMatchResult?.status === 'success' ||
+      faceMatchResult?.matched === true ||
+      (selfieSubmitted && Boolean(selfiePhoto) && faceMatchResult?.status !== 'error')
+  );
 
   const isDirty = React.useMemo(() => {
     const b = baselineRef.current;
@@ -337,23 +354,129 @@ export function AccountStatusScreen({
     setCaptureModalVisible(true);
   };
 
-  // Confirm capture action
-  const handleApplyCapture = (type: 'camera' | 'gallery') => {
-    setHasUserEdited(true);
-    if (captureTarget === 'selfie') {
-      const photoUri = `data:image/jpeg;base64,camera_selfie_${Date.now()}`;
-      setSelfiePhoto(photoUri);
-    } else if (captureTarget === 'cheque') {
-      const chequeUri = `data:image/jpeg;base64,camera_cheque_${Date.now()}`;
-      setChequePhoto(chequeUri);
-      setChequeFileName('cancelled_cheque.jpg');
-    } else if (captureTarget === 'police') {
-      const pdfUri = `data:application/pdf;base64,camera_police_pcc_${Date.now()}`;
-      setPoliceDocData(pdfUri);
-      setPoliceDocName(type === 'camera' ? 'police-clearance-photo.jpg' : 'police-clearance-certificate.pdf');
-    }
+  // Confirm capture action using real camera & file picker
+  const handleApplyCapture = async (type: 'camera' | 'gallery') => {
+    const target = captureTarget;
     setCaptureModalVisible(false);
     setCaptureTarget(null);
+
+    try {
+      let result: PickedMediaResult | null = null;
+      if (type === 'camera') {
+        result = await mediaPickerService.takePhoto({ isSelfie: target === 'selfie' });
+      } else {
+        if (target === 'police') {
+          result = await mediaPickerService.pickDocument('application/pdf,image/*');
+        } else {
+          result = await mediaPickerService.pickImage();
+        }
+      }
+
+      if (!result) return;
+
+      setHasUserEdited(true);
+
+      const fileData = result.dataUri || result.uri;
+      const fileName = result.fileName || (target === 'selfie' ? 'selfie.jpg' : 'document.jpg');
+
+      if (target === 'selfie') {
+        setSelfiePhoto(fileData);
+        // Automatically validate clicked photo with Aadhaar document
+        validateFaceMatch(fileData);
+      } else if (target === 'cheque') {
+        setChequePhoto(fileData);
+        setChequeFileName(fileName);
+      } else if (target === 'police') {
+        setPoliceDocData(fileData);
+        setPoliceDocName(fileName);
+      }
+    } catch (err: any) {
+      console.warn('[AccountStatus] Picker error:', err?.message);
+      Alert.alert('Media Picker', err?.message || 'Failed to select media. Please try again.');
+    }
+  };
+
+  // Call Face Match API (/api/users/face-match) to compare clicked photo with Aadhaar document
+  const validateFaceMatch = async (imageData: string) => {
+    if (!imageData) return;
+    setFaceValidating(true);
+    setFaceMatchResult({
+      status: 'validating',
+      message: 'Matching camera photo with Aadhaar document...',
+    });
+
+    try {
+      const token =
+        accountData.userId || accountData.token || accountData.phone || accountData.email;
+      const res = await userService.faceMatch(imageData, token);
+
+      const isMatch = Boolean(
+        res &&
+          (res.matched === true ||
+            res.isMatched === true ||
+            (res.success && (res as any)?.data?.matched !== false && !(res as any)?.error))
+      );
+
+      const confidence = res?.confidence ?? (res as any)?.data?.confidence;
+      const threshold = res?.threshold ?? (res as any)?.data?.thresholds?.['1e-4'];
+      const apiMessage =
+        res?.message ||
+        (isMatch
+          ? 'Face verified successfully with Aadhaar document!'
+          : (res as any)?.error || 'Face did not match with Aadhaar card photo. Please upload a clear front-facing picture.');
+
+      if (isMatch) {
+        setFaceMatchResult({
+          status: 'success',
+          matched: true,
+          confidence,
+          threshold,
+          message: apiMessage,
+        });
+        setSelfieSubmitted(true);
+        if ((res as any)?.data?.user?.photo) {
+          setSelfiePhoto((res as any).data.user.photo);
+        }
+        Alert.alert(
+          'Face Match Verified! ✓',
+          confidence
+            ? `${apiMessage}\n\nConfidence: ${confidence.toFixed(1)}% (Threshold: ${threshold ? threshold.toFixed(1) + '%' : 'Passed'})`
+            : apiMessage
+        );
+      } else {
+        const errorMsg =
+          res?.message ||
+          (res as any)?.error ||
+          'Face verification did not match your Aadhaar document. Please ensure good lighting and face the camera directly.';
+        setFaceMatchResult({
+          status: 'error',
+          matched: false,
+          confidence,
+          threshold,
+          message: errorMsg,
+          error: (res as any)?.error,
+        });
+        Alert.alert(
+          'Face Verification Failed',
+          confidence
+            ? `${errorMsg}\n\nConfidence: ${confidence.toFixed(1)}% (Required: ${threshold ? threshold.toFixed(1) + '%' : '69.1%'})`
+            : errorMsg
+        );
+      }
+    } catch (err: any) {
+      console.warn('[AccountStatus] faceMatch error:', err);
+      const errMsg =
+        err?.message ||
+        'Failed to connect to face verification service. Please try again.';
+      setFaceMatchResult({
+        status: 'error',
+        matched: false,
+        message: errMsg,
+      });
+      Alert.alert('Face Match Error', errMsg);
+    } finally {
+      setFaceValidating(false);
+    }
   };
 
   // --------------------------------------------------------------------------
@@ -911,10 +1034,11 @@ export function AccountStatusScreen({
             </View>
 
             {/* ============================================================== */}
+            {/* ============================================================== */}
             {/* DOCUMENT 1: SELFIE */}
             {/* ============================================================== */}
-            {selfieSubmitted ? (
-              // REDUCED HEIGHT COMPACT CARD (Already Done)
+            {selfieSubmitted && !faceMatchResult && !faceValidating ? (
+              // REDUCED HEIGHT COMPACT CARD (Already Done & no active face match result to display)
               <View style={[styles.compactCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
                 <View style={styles.compactLeft}>
                   <View style={[styles.compactDoneBadge, { backgroundColor: theme.successBg, borderColor: theme.successBorder }]}>
@@ -932,22 +1056,16 @@ export function AccountStatusScreen({
                       Capture Selfie Photo
                     </Text>
                     <Text style={[styles.compactSub, { color: theme.successText }]}>
-                      ✓ Photo Captured & Uploaded
+                      ✓ Photo Captured & Validated
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity
-                  style={[styles.compactActionBtn, { borderColor: theme.borderMedium }]}
-                  onPress={() => {
-                    setHasUserEdited(true);
-                    handleOpenCapture('selfie');
-                  }}
-                  activeOpacity={0.7}>
-                  <Text style={[styles.compactActionText, { color: theme.primary }]}>Retake</Text>
-                </TouchableOpacity>
+                <View style={styles.freezeBadge}>
+                  <Text style={styles.freezeBadgeText}>Freeze</Text>
+                </View>
               </View>
             ) : (
-              // FULL PENDING CARD WITH UPLOAD DETAILS BUTTON
+              // FULL PENDING CARD WITH FACE MATCH BIOMETRIC VALIDATION
               <View
                 style={[
                   styles.docCard,
@@ -965,10 +1083,85 @@ export function AccountStatusScreen({
                       Capture Selfie Photo
                     </Text>
                     <Text style={[styles.docDesc, { color: theme.textMuted }]}>
-                      Capture your clear front-facing picture for your security ID badge.
+                      Capture your clear front-facing picture. It will be validated against your Aadhaar card photo.
                     </Text>
                   </View>
                 </View>
+
+                {/* Validating Spinner Banner */}
+                {faceValidating && (
+                  <View style={[styles.faceMatchBox, styles.faceMatchValidatingBox]}>
+                    <ActivityIndicator size="small" color={theme.primary} />
+                    <View style={styles.faceMatchTextCol}>
+                      <Text style={[styles.faceMatchTitle, { color: theme.primary }]}>
+                        Verifying Face with Aadhaar...
+                      </Text>
+                      <Text style={[styles.faceMatchSub, { color: theme.textMuted }]}>
+                        Matching your picture with Aadhaar card photo
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Face Match Success Box */}
+                {!faceValidating && faceMatchResult?.status === 'success' && (
+                  <View style={[styles.faceMatchBox, styles.faceMatchSuccessBox]}>
+                    <View style={styles.faceMatchHeaderRow}>
+                      <View style={styles.faceMatchIconCircleSuccess}>
+                        <Text style={styles.faceMatchSuccessIcon}>✓</Text>
+                      </View>
+                      <View style={styles.faceMatchTextCol}>
+                        <Text style={styles.faceMatchSuccessTitle}>
+                          Face Match Verified ✓
+                        </Text>
+                        <Text style={styles.faceMatchSuccessSub}>
+                          {faceMatchResult.message || 'Face matched successfully with Aadhaar document! Profile photo updated.'}
+                        </Text>
+                      </View>
+                      {faceMatchResult.confidence ? (
+                        <View style={styles.confidenceBadge}>
+                          <Text style={styles.confidenceText}>
+                            {`${faceMatchResult.confidence.toFixed(1)}% Match`}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    {faceMatchResult.threshold ? (
+                      <View style={styles.faceMatchConfidenceRow}>
+                        <Text style={styles.faceMatchConfidenceLabel}>
+                          Confidence: <Text style={styles.faceMatchConfidenceVal}>{faceMatchResult.confidence?.toFixed(1)}%</Text>
+                        </Text>
+                        <Text style={styles.faceMatchThresholdLabel}>
+                          Threshold: {faceMatchResult.threshold.toFixed(1)}% (Passed)
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                )}
+
+                {/* Face Match Error Box (no duplicate buttons; user will use Retake near pic icon) */}
+                {!faceValidating && faceMatchResult?.status === 'error' && (
+                  <View style={[styles.faceMatchBox, styles.faceMatchErrorBox]}>
+                    <View style={styles.faceMatchHeaderRow}>
+                      <View style={styles.faceMatchIconCircleError}>
+                        <Text style={styles.faceMatchErrorIcon}>⚠️</Text>
+                      </View>
+                      <View style={styles.faceMatchTextCol}>
+                        <Text style={styles.faceMatchErrorTitle}>
+                          Face Verification Failed
+                        </Text>
+                        <Text style={styles.faceMatchErrorSub}>
+                          {faceMatchResult.message}
+                        </Text>
+                        {faceMatchResult.confidence ? (
+                          <Text style={styles.confidenceErrorText}>
+                            Confidence: {faceMatchResult.confidence.toFixed(1)}% (Required: {faceMatchResult.threshold ? faceMatchResult.threshold.toFixed(1) + '%' : '69.1%'})
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  </View>
+                )}
 
                 {selfiePhoto ? (
                   <View
@@ -979,28 +1172,46 @@ export function AccountStatusScreen({
                         borderColor: theme.border,
                       },
                     ]}>
+                    {/* Freeze Title above image when validated */}
+                    {isImageValidated && (
+                      <View style={styles.freezeHeaderRow}>
+                        <Text style={styles.freezeTitleText}>Freeze</Text>
+                        <View style={styles.freezeBadge}>
+                          <Text style={styles.freezeBadgeText}>✓ Validated</Text>
+                        </View>
+                      </View>
+                    )}
                     <Image
                       source={{ uri: selfiePhoto }}
-                      style={[styles.selfieImage, { borderColor: theme.primary }]}
+                      style={[styles.selfieImage, { borderColor: isImageValidated ? theme.successText : theme.primary }]}
                       defaultSource={require('../assets/images/logo.png')}
                     />
                     <View style={styles.previewMeta}>
-                      <Text style={[styles.attachedBadge, { color: theme.successText }]}>
-                        ✓ Selfie Photo Selected
+                      <Text style={[styles.attachedBadge, { color: faceMatchResult?.status === 'error' ? colors.colorError : theme.successText }]}>
+                        {isImageValidated
+                          ? '✓ Face Match Verified'
+                          : faceMatchResult?.status === 'error'
+                          ? '⚠️ Face Match Failed'
+                          : '✓ Photo Selected'}
                       </Text>
-                      <TouchableOpacity
-                        style={[
-                          styles.retakeButton,
-                          { borderColor: theme.borderMedium, backgroundColor: theme.cardBg },
-                        ]}
-                        onPress={() => {
-                          setHasUserEdited(true);
-                          handleOpenCapture('selfie');
-                        }}>
-                        <Text style={[styles.retakeText, { color: theme.primary }]}>
-                          Retake Selfie
-                        </Text>
-                      </TouchableOpacity>
+                      {/* Retake CTA near pic icon only when image is NOT validated; removed once validated so user cannot update */}
+                      {!isImageValidated && (
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                          <TouchableOpacity
+                            style={[
+                              styles.retakeButton,
+                              { borderColor: theme.borderMedium, backgroundColor: theme.cardBg },
+                            ]}
+                            onPress={() => {
+                              setHasUserEdited(true);
+                              handleOpenCapture('selfie');
+                            }}>
+                            <Text style={[styles.retakeText, { color: theme.primary }]}>
+                              Retake
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   </View>
                 ) : (
@@ -2254,5 +2465,170 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  // Face Match Biometric Styles
+  faceMatchBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    marginVertical: 10,
+  },
+  faceMatchValidatingBox: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#C7D2FE',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  faceMatchSuccessBox: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  faceMatchErrorBox: {
+    backgroundColor: '#FFF1F2',
+    borderColor: '#FECDD3',
+  },
+  faceMatchHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  faceMatchIconCircleSuccess: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  faceMatchIconCircleError: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  faceMatchSuccessIcon: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  faceMatchErrorIcon: {
+    fontSize: 14,
+  },
+  faceMatchTextCol: {
+    flex: 1,
+  },
+  faceMatchTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  faceMatchSub: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  faceMatchSuccessTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#065F46',
+  },
+  faceMatchSuccessSub: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    color: '#047857',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  faceMatchErrorTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#991B1B',
+  },
+  faceMatchErrorSub: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    color: '#B91C1C',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  confidenceBadge: {
+    backgroundColor: '#D1FAE5',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  confidenceText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#047857',
+  },
+  confidenceErrorText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#991B1B',
+    marginTop: 4,
+  },
+  faceMatchConfidenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.06)',
+  },
+  faceMatchConfidenceLabel: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    color: '#4B5563',
+  },
+  faceMatchConfidenceVal: {
+    fontWeight: '800',
+    color: '#047857',
+  },
+  faceMatchThresholdLabel: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    color: '#6B7280',
+  },
+  freezeHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  freezeTitleText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#065F46',
+    letterSpacing: 0.5,
+  },
+  freezeBadge: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  freezeBadgeText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#047857',
   },
 });
