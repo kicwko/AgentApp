@@ -53,100 +53,6 @@ export interface OrderData {
   agentPhone?: string;
 }
 
-const FALLBACK_ORDERS: OrderData[] = [
-  {
-    id: '#KW-9082',
-    transactionId: 'TXN-UPI-9082104',
-    status: 'active',
-    statusLabel: 'In Progress',
-    time: 'Assigned 18 mins ago',
-    amount: '₹450',
-    payoutAmount: '₹385',
-    amountNote: 'Instant Payout',
-    title: 'Emergency Water Leakage',
-    description: 'Kitchen pipe burst under sink causing water flow in hallway.',
-    category: 'Plumbing',
-    categoryIcon: '💧',
-    society: 'Palm Heights',
-    address: 'Tower B-804 (8th Floor)',
-    landmark: 'Near Gate 2 Security Hub',
-    residentName: 'Vikram Mehta',
-    phone: '+919876543210',
-    passCode: 'GP-7729-KW',
-    gpsCoords: '12.9249° N, 77.6784° E',
-    isHighPriority: true,
-    paymentMethod: 'UPI',
-    paymentStatus: 'Completed',
-    payoutMethod: 'Direct UPI Bank Transfer',
-  },
-  {
-    id: '#KW-8921',
-    transactionId: 'TXN-UPI-8921550',
-    status: 'completed',
-    statusLabel: 'Completed',
-    time: 'Today, 11:30 AM',
-    amount: '₹600',
-    payoutAmount: '₹510',
-    amountNote: 'Settled to Wallet',
-    title: 'Switchboard Tripping & MCB Replacement',
-    description: 'Main breaker tripping repeatedly on microwave and geyser load. Replaced with 32A MCB.',
-    category: 'Electrical',
-    categoryIcon: '⚡',
-    society: 'Prestige Lakeside',
-    address: 'Villa 12',
-    rating: '5.0',
-    stars: '★★★★★',
-    feedback: '"Great speed & tidy! Replaced the MCB in 15 minutes, very professional partner."',
-    gpsCoords: '12.9538° N, 77.7470° E',
-    paymentMethod: 'UPI',
-    paymentStatus: 'Completed',
-    payoutMethod: 'Instant Wallet Settlement',
-  },
-  {
-    id: '#KW-8854',
-    transactionId: 'TXN-UPI-8854312',
-    status: 'completed',
-    statusLabel: 'Completed',
-    time: 'Yesterday, 4:15 PM',
-    amount: '₹380',
-    payoutAmount: '₹320',
-    amountNote: 'Settled to Wallet',
-    title: 'Sanitary Tap & Pipe Washer Replacement',
-    description: 'Bathroom sink faucet continuous drip fixed by replacing rubber washer and O-ring seal.',
-    category: 'Plumbing',
-    categoryIcon: '🔧',
-    society: 'Sobha Dream Acres',
-    address: 'Wing C-302',
-    rating: '4.8',
-    stars: '★★★★½',
-    feedback: '"Fixed in 15 mins! Cleaned up the area afterwards and tested properly."',
-    gpsCoords: '12.9360° N, 77.7215° E',
-    paymentMethod: 'UPI',
-    paymentStatus: 'Completed',
-    payoutMethod: 'Instant Wallet Settlement',
-  },
-  {
-    id: '#KW-8710',
-    transactionId: 'TXN-CNCL-871009',
-    status: 'cancelled',
-    statusLabel: 'Customer Cancelled',
-    time: '28 Sep, 10:00 AM',
-    amount: '₹50',
-    originalAmount: '₹500',
-    payoutAmount: '₹50',
-    amountNote: 'Cancellation Fee: ₹50',
-    title: 'Balcony Pigeon Net Installation',
-    description: 'Resident rescheduled with building maintenance team for society-wide netting.',
-    category: 'Installation',
-    categoryIcon: '✕',
-    society: 'Brigade Metropolis',
-    address: 'Summit Tower #104',
-    cancellationReason:
-      'Reason: Resident rescheduled with building maintenance team.',
-    gpsCoords: '12.9912° N, 77.7021° E',
-  },
-];
-
 function mapBackendOrderToUI(bo: BackendOrder): OrderData {
   const isDone = bo.status === 'Done';
   const isCanceled = bo.status === 'Canceled';
@@ -185,11 +91,11 @@ function mapBackendOrderToUI(bo: BackendOrder): OrderData {
       const dt = new Date(bo.createdAt);
       formattedTime = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } catch {
-      // fallback
+      // ignore
     }
   }
 
-  const payout = bo.agentPayment?.amount || Math.round((bo.totalPrice || 450) * 0.85);
+  const payout = bo.agentPayment?.amount || Math.round((bo.totalPrice || 0) * 0.85);
 
   let amountNote = 'Instant Payout';
   if (uiStatus === 'active') {
@@ -298,27 +204,32 @@ export function OrdersScreen({ user }: { user?: User } = {}) {
         agentId: agentIdentifier || undefined,
       });
 
-      if (response && response.success && Array.isArray(response.data) && response.data.length > 0) {
-        const mapped = response.data.map(mapBackendOrderToUI);
+      if (response && response.success && Array.isArray(response.data)) {
+        // Filter strictly to current user's assigned tasks
+        const userOrders = response.data.filter(
+          o =>
+            (cleanPhone && (o.agentPhone?.includes(cleanPhone) || o.agentId?.includes(cleanPhone))) ||
+            (user?.email && (o.agentId?.includes(user.email) || o.customer?.email === user.email)) ||
+            (user?.uid && o.agentId?.includes(user.uid)) ||
+            (o.agentName && user?.displayName && o.agentName.toLowerCase() === user.displayName.toLowerCase())
+        );
+        const listToUse = userOrders.length > 0 ? userOrders : (agentIdentifier ? [] : response.data);
+        const mapped = listToUse.map(mapBackendOrderToUI);
         setOrders(mapped);
         setIsLiveConnected(true);
         if (silent) {
-          showToast(`Synced ${mapped.length} tasks for your profile!`);
+          showToast(mapped.length > 0 ? `Synced ${mapped.length} tasks` : 'Task feed updated');
         }
       } else {
-        // If logged-in user has 0 assigned orders in DB, use fallback orders so UI is not empty
-        setOrders(FALLBACK_ORDERS);
+        setOrders([]);
         setIsLiveConnected(true);
-        if (silent) {
-          showToast('Updated task feed');
-        }
       }
     } catch (err: any) {
       console.warn('[OrdersScreen] Could not fetch real orders:', err.message);
-      setOrders(FALLBACK_ORDERS);
+      setOrders([]);
       setIsLiveConnected(false);
       if (silent) {
-        showToast('Running on cached orders data');
+        showToast('Running on live offline mode');
       }
     } finally {
       setLoading(false);
@@ -330,7 +241,20 @@ export function OrdersScreen({ user }: { user?: User } = {}) {
     fetchRealOrders();
   }, [user]);
 
+  const REFRESH_COOLDOWN_MS = 30 * 1000;
+  const lastRefreshTimeRef = useRef<number>(0);
+
   const handleRefresh = () => {
+    const now = Date.now();
+    const timeSinceLast = now - lastRefreshTimeRef.current;
+    if (timeSinceLast < REFRESH_COOLDOWN_MS && lastRefreshTimeRef.current !== 0) {
+      const remainingSec = Math.ceil((REFRESH_COOLDOWN_MS - timeSinceLast) / 1000);
+      showToast(`Please wait ${remainingSec}s before refreshing again`);
+      setRefreshing(false);
+      return;
+    }
+
+    lastRefreshTimeRef.current = now;
     setRefreshing(true);
     fetchRealOrders(true);
   };
@@ -962,8 +886,9 @@ export function OrdersScreen({ user }: { user?: User } = {}) {
                     Confirmed Flat Address
                   </Text>
                   <Text style={styles.infoTileValue}>
-                    {gatePassOrder?.society || 'Palm Heights'},{' '}
-                    {gatePassOrder?.address || 'Tower B-804 (8th Floor)'}
+                    {[gatePassOrder?.society, gatePassOrder?.address]
+                      .filter(Boolean)
+                      .join(', ') || 'Customer Site'}
                   </Text>
                 </View>
               </View>

@@ -1,11 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Linking,
+  PermissionsAndroid,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  ToastAndroid,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -13,10 +17,7 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { GradientButton } from '../components/GradientButton';
 import { orderService, type BackendOrder } from '../services/orderService';
-
-const SAMPLE_JOB_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuB3UnaoKNvL3iIspXKJoiLs3YCldwCiRK4yyt6pzR1AJbqHOfTirMZ1N2FJUYDOm413Hyg3CfK2fDVJLSyz9LSORxrP79aTU6O1XSqU91jeAAhGr8eA3J_L17wFYlMRu8FoZbftjpHOxdTrQdgRhhk17vgr5oYWIp_eNoankk4JYHhQhOm2yiPAWACxlNKwYXGsKNHH2OfNdebD4douMO2PZ96WI5CSuq2tqBR-170';
-
+import { userService } from '../services/userService';
 import type { User } from '../services/firebaseAuth';
 
 function calculateDashboardMetrics(orders: BackendOrder[]) {
@@ -31,6 +32,20 @@ function calculateDashboardMetrics(orders: BackendOrder[]) {
         d.getFullYear() === now.getFullYear() &&
         d.getMonth() === now.getMonth() &&
         d.getDate() === now.getDate()
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  // Helper to check if date is in current month
+  const isSameMonth = (dateStr?: string | null) => {
+    if (!dateStr) return false;
+    try {
+      const d = new Date(dateStr);
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth()
       );
     } catch {
       return false;
@@ -73,18 +88,15 @@ function calculateDashboardMetrics(orders: BackendOrder[]) {
     visitsText = `${todayCompleted.length} / ${todayOrders.length || todayCompleted.length}`;
   } else if (todayOrders.length > 0) {
     visitsText = `0 / ${todayOrders.length}`;
-  } else {
-    const anyDone = orders.filter(o => o.status === 'Done');
-    visitsText = anyDone.length > 0 ? `${anyDone.length} Done` : '0 / 1';
   }
 
-  // 2. On-Time Gate: reached time of completed order (prioritize today's completed, or recent completed)
+  // 2. On-Time Gate: reached time of completed order
   const targetCompleted =
     todayCompleted.length > 0
       ? todayCompleted[0]
       : orders.find(o => o.status === 'Done');
 
-  let gateText = '98%';
+  let gateText = orders.length > 0 ? '100%' : '-';
   if (targetCompleted) {
     let reachedMins: number | null = null;
 
@@ -106,19 +118,10 @@ function calculateDashboardMetrics(orders: BackendOrder[]) {
       }
     }
 
-    if (!reachedMins && targetCompleted.scheduledTimeSlot) {
-      const match = targetCompleted.scheduledTimeSlot.match(
-        /(\d+)\s*(?:min|mins|minutes)/i
-      );
-      if (match && match[1]) {
-        reachedMins = parseInt(match[1], 10);
-      }
-    }
-
     if (reachedMins) {
       gateText = `${reachedMins} min`;
     } else {
-      gateText = '15 min';
+      gateText = '100%';
     }
   }
 
@@ -141,128 +144,502 @@ function calculateDashboardMetrics(orders: BackendOrder[]) {
     weekTotal += payout;
   }
 
-  // Fallback to all completed orders for this partner if none within the specific window
-  if (weekTotal === 0) {
-    const allCompleted = orders.filter(o => o.status === 'Done');
-    for (const o of allCompleted) {
-      const payout =
-        o.agentPayment?.amount ||
-        Math.round((o.totalPrice || 0) * 0.85) ||
-        o.totalPrice ||
-        0;
-      weekTotal += payout;
-    }
-  }
-
   let earnText = `₹${weekTotal.toLocaleString('en-IN')}`;
   if (weekTotal >= 10000) {
     earnText = `₹${(weekTotal / 1000).toFixed(1)}k`;
   }
 
+  // 4. Today's Total Earnings
+  let todayTotal = 0;
+  for (const o of todayCompleted) {
+    const payout =
+      o.agentPayment?.amount ||
+      Math.round((o.totalPrice || 0) * 0.85) ||
+      o.totalPrice ||
+      0;
+    todayTotal += payout;
+  }
+  const todayTotalText = `₹${todayTotal.toLocaleString('en-IN')}`;
+  const todayCompletedJobsText = `${todayCompleted.length} completed ${todayCompleted.length === 1 ? 'job' : 'jobs'}`;
+
+  // 5. Month Total Earnings
+  const monthCompletedOrders = orders.filter(
+    o =>
+      o.status === 'Done' &&
+      (isSameMonth(o.completedAt) ||
+        isSameMonth(o.scheduledDate) ||
+        isSameMonth(o.createdAt))
+  );
+  let monthTotal = 0;
+  for (const o of monthCompletedOrders) {
+    const payout =
+      o.agentPayment?.amount ||
+      Math.round((o.totalPrice || 0) * 0.85) ||
+      o.totalPrice ||
+      0;
+    monthTotal += payout;
+  }
+  const monthTotalText = `₹${monthTotal.toLocaleString('en-IN')}`;
+
+  // 6. Rating & Orders Count
+  const ratedOrders = orders.filter(
+    o => o.rating && typeof o.rating.stars === 'number'
+  );
+  let ratingText = orders.length > 0 ? '5.0' : '-';
+  if (ratedOrders.length > 0) {
+    const avg =
+      ratedOrders.reduce((sum, o) => sum + (o.rating!.stars || 0), 0) /
+      ratedOrders.length;
+    ratingText = avg.toFixed(1);
+  }
+
+  const completedCount = orders.filter(o => o.status === 'Done').length;
+  const ordersQuarterText = `${orders.length} ${orders.length === 1 ? 'order' : 'orders'} total`;
+  const completionRateText =
+    orders.length > 0
+      ? `${Math.round((completedCount / orders.length) * 100)}%`
+      : '100%';
+
   return {
     visitsText,
     gateText,
     earnText,
+    todayTotalText,
+    todayCompletedJobsText,
+    monthTotalText,
+    ratingText,
+    ordersQuarterText,
+    completionRateText,
   };
 }
 
 export function DashboardScreen({ user }: { user?: User } = {}) {
-  const [timeLeft, setTimeLeft] = useState(38);
-  const [orderState, setOrderState] = useState<'pending' | 'locking' | 'locked' | 'declined'>('pending');
+  const [pendingOrder, setPendingOrder] = useState<BackendOrder | null>(null);
+  const [pendingTimeLeft, setPendingTimeLeft] = useState<number>(300); // 5 minutes = 300 seconds
+  const [orderAccepting, setOrderAccepting] = useState(false);
+  const [orderDeclining, setOrderDeclining] = useState(false);
+
+  const [inProgressOrders, setInProgressOrders] = useState<BackendOrder[]>([]);
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [recentOrders, setRecentOrders] = useState<BackendOrder[]>([]);
+
+  const [userLocation, setUserLocation] = useState<{
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null>(null);
+
   const [todayVisitsText, setTodayVisitsText] = useState('0 / 0');
-  const [onTimeGateText, setOnTimeGateText] = useState('98%');
+  const [onTimeGateText, setOnTimeGateText] = useState('-');
   const [weeklyEarnText, setWeeklyEarnText] = useState('₹0');
+  const [todayTotalEarnings, setTodayTotalEarnings] = useState('₹0');
+  const [todayCompletedJobs, setTodayCompletedJobs] = useState('0 completed jobs');
+  const [monthTotalEarnings, setMonthTotalEarnings] = useState('₹0');
+  const [performanceRating, setPerformanceRating] = useState('-');
+  const [ordersQuarterCount, setOrdersQuarterCount] = useState('0 orders total');
+  const [completionRate, setCompletionRate] = useState('100%');
   const [refreshing, setRefreshing] = useState(false);
 
+  // Fetch agent profile location if available
+  useEffect(() => {
+    const cleanPhone = (user?.phoneNumber || '').replace(/\D/g, '').slice(-10);
+    if (cleanPhone) {
+      userService
+        .fetchPartnerProfile({ phone: cleanPhone })
+        .then((res: any) => {
+          if (res && res.success && res.data?.location) {
+            setUserLocation(res.data.location);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [user]);
+
+  // Retrieve current GPS / Cluster coordinates
+  const getCoordinates = useCallback(async (): Promise<{ lat: number; lng: number }> => {
+    if (
+      userLocation?.latitude != null &&
+      userLocation?.longitude != null &&
+      !isNaN(userLocation.latitude) &&
+      !isNaN(userLocation.longitude)
+    ) {
+      return { lat: userLocation.latitude, lng: userLocation.longitude };
+    }
+
+    if (Platform.OS === 'android') {
+      try {
+        const hasFine = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+        );
+        if (!hasFine) {
+          await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+          );
+        }
+      } catch {
+        // Continue to fallback
+      }
+    }
+
+    const nav = (globalThis as any).navigator;
+    if (nav?.geolocation?.getCurrentPosition) {
+      try {
+        const pos: any = await new Promise((resolve, reject) => {
+          nav.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 3000,
+            enableHighAccuracy: false,
+          });
+        });
+        if (pos?.coords?.latitude && pos?.coords?.longitude) {
+          return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        }
+      } catch {
+        // Ignore and fallback
+      }
+    }
+
+    // Default Delhi NCR / DLF Gurgaon Cluster coordinates
+    return { lat: 28.4595, lng: 77.0266 };
+  }, [userLocation]);
+
+  // Load all user orders from backend
   const loadDashboardData = useCallback(async () => {
-    const cleanPhone = (user?.phoneNumber || '8800313434').replace(/\D/g, '').slice(-10);
+    const cleanPhone = (user?.phoneNumber || '').replace(/\D/g, '').slice(-10);
     const agentId = cleanPhone || user?.email || user?.uid || '';
 
     try {
-      const res = await orderService.getOrders({ agentId: agentId || undefined, limit: 50 });
-      if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-        setRecentOrders(res.data.slice(0, 4));
-        const metrics = calculateDashboardMetrics(res.data);
+      const res = await orderService.getOrders({
+        agentId: agentId || undefined,
+        limit: 50,
+      });
+
+      if (res && res.success && Array.isArray(res.data)) {
+        // Filter strictly to current user's assigned orders
+        const userOrders = res.data.filter(
+          o =>
+            (cleanPhone &&
+              (o.agentPhone?.includes(cleanPhone) ||
+                o.agentId?.includes(cleanPhone))) ||
+            (user?.email &&
+              (o.agentId?.includes(user.email) ||
+                o.customer?.email === user.email)) ||
+            (user?.uid && o.agentId?.includes(user.uid)) ||
+            (o.agentName &&
+              user?.displayName &&
+              o.agentName.toLowerCase() === user.displayName.toLowerCase())
+        );
+
+        const finalOrders =
+          userOrders.length > 0 ? userOrders : agentId ? [] : res.data;
+
+        // Extract in-progress tasks: 'In Transit' | 'In Progress'
+        const activeInProgress = finalOrders.filter(
+          o => o.status === 'In Transit' || o.status === 'In Progress'
+        );
+        setInProgressOrders(activeInProgress);
+
+        // Check for any assigned pending orders
+        const foundPending = finalOrders.find(o => o.status === 'Pending');
+        if (foundPending && !pendingOrder) {
+          const createdMs = foundPending.createdAt
+            ? new Date(foundPending.createdAt).getTime()
+            : Date.now();
+          const elapsedSec = Math.max(0, Math.floor((Date.now() - createdMs) / 1000));
+          const remainSec = elapsedSec < 300 ? 300 - elapsedSec : 0;
+          if (remainSec <= 0) {
+            handleAutoDecline(foundPending);
+          } else {
+            setPendingOrder(foundPending);
+            setPendingTimeLeft(remainSec);
+          }
+        }
+
+        // Recent completed / historical orders for feed
+        const completedFeed = finalOrders
+          .filter(o => o.status === 'Done' || o.status === 'Canceled')
+          .slice(0, 5);
+        setRecentOrders(
+          completedFeed.length > 0 ? completedFeed : finalOrders.slice(0, 5)
+        );
+
+        // Calculate and update metrics
+        const metrics = calculateDashboardMetrics(finalOrders);
         setTodayVisitsText(metrics.visitsText);
         setOnTimeGateText(metrics.gateText);
         setWeeklyEarnText(metrics.earnText);
-      } else {
-        // If 0 returned for agentId filter, fetch without filter and resolve user orders
-        const allRes = await orderService.getOrders({ limit: 50 });
-        if (allRes && allRes.success && Array.isArray(allRes.data)) {
-          const userOrders = allRes.data.filter(
-            o =>
-              (cleanPhone &&
-                (o.agentPhone?.includes(cleanPhone) ||
-                  o.agentId?.includes(cleanPhone))) ||
-              (user?.email &&
-                (o.agentId?.includes(user.email) ||
-                  o.customer?.email === user.email)) ||
-              (o.agentName &&
-                user?.displayName &&
-                o.agentName.toLowerCase() ===
-                  user.displayName.toLowerCase())
-          );
-          const listToUse = userOrders.length > 0 ? userOrders : allRes.data;
-          setRecentOrders(listToUse.slice(0, 4));
-          const metrics = calculateDashboardMetrics(listToUse);
-          setTodayVisitsText(metrics.visitsText);
-          setOnTimeGateText(metrics.gateText);
-          setWeeklyEarnText(metrics.earnText);
-        }
+        setTodayTotalEarnings(metrics.todayTotalText);
+        setTodayCompletedJobs(metrics.todayCompletedJobsText);
+        setMonthTotalEarnings(metrics.monthTotalText);
+        setPerformanceRating(metrics.ratingText);
+        setOrdersQuarterCount(metrics.ordersQuarterText);
+        setCompletionRate(metrics.completionRateText);
       }
     } catch (err: any) {
       console.warn('[DashboardScreen] Could not load live orders:', err?.message);
     }
-  }, [user]);
+  }, [user, pendingOrder]);
 
+  // Auto-decline handler when 5 minutes expire
+  const handleAutoDecline = useCallback(
+    async (order: BackendOrder) => {
+      try {
+        const orderKey = order._id || order.orderId;
+        console.log('[DashboardScreen] 5-minute timer expired for order:', orderKey);
+        await orderService.updateOrderStatus(orderKey, {
+          status: 'Canceled',
+          reason: 'Expired - not accepted within 5 minutes',
+          canceledBy: 'system',
+        });
+        if (Platform.OS === 'android') {
+          ToastAndroid.show(
+            'Order expired and auto-declined.',
+            ToastAndroid.SHORT
+          );
+        }
+      } catch (err) {
+        console.warn('[DashboardScreen] Error auto-declining expired order:', err);
+      } finally {
+        setPendingOrder(null);
+        setPendingTimeLeft(300);
+        await loadDashboardData();
+      }
+    },
+    [loadDashboardData]
+  );
+
+  // Poll API (/api/orders/poll) every 30 seconds
+  const pollNewOrders = useCallback(async () => {
+    try {
+      const coords = await getCoordinates();
+      const pollRes = await orderService.pollOrders({
+        lat: coords.lat,
+        lng: coords.lng,
+        role: 'agent',
+        limit: 20,
+      });
+
+      if (pollRes && pollRes.success && pollRes.data) {
+        const pollData = pollRes.data;
+        const candidateOrders: BackendOrder[] = [
+          ...(pollData.latestOrder ? [pollData.latestOrder] : []),
+          ...(Array.isArray(pollData.orders) ? pollData.orders : []),
+          ...(Array.isArray(pollData.data) ? pollData.data : []),
+        ];
+
+        const incomingPending = candidateOrders.find(o => o.status === 'Pending');
+
+        if (incomingPending) {
+          const incomingKey = incomingPending._id || incomingPending.orderId;
+          const currentKey = pendingOrder ? pendingOrder._id || pendingOrder.orderId : null;
+
+          if (incomingKey !== currentKey) {
+            const createdMs = incomingPending.createdAt
+              ? new Date(incomingPending.createdAt).getTime()
+              : Date.now();
+            const elapsedSec = Math.max(0, Math.floor((Date.now() - createdMs) / 1000));
+            const remainSec = elapsedSec < 300 ? 300 - elapsedSec : 0;
+
+            if (remainSec <= 0) {
+              await handleAutoDecline(incomingPending);
+            } else {
+              setPendingOrder(incomingPending);
+              setPendingTimeLeft(remainSec);
+            }
+          }
+        }
+      }
+
+      // Also refresh dashboard data to update in-progress tasks
+      await loadDashboardData();
+    } catch (err: any) {
+      console.warn('[DashboardScreen] Error during 30s poll:', err?.message);
+    }
+  }, [getCoordinates, pendingOrder, handleAutoDecline, loadDashboardData]);
+
+  // Setup 30-second polling interval
   useEffect(() => {
-    loadDashboardData();
-  }, [loadDashboardData]);
+    pollNewOrders();
+    const pollInterval = setInterval(() => {
+      pollNewOrders();
+    }, 30000);
+
+    return () => clearInterval(pollInterval);
+  }, [pollNewOrders]);
+
+  // 1-second Countdown Timer for Pending Order (5 Minutes)
+  useEffect(() => {
+    if (!pendingOrder || pendingTimeLeft <= 0) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setPendingTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          handleAutoDecline(pendingOrder);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [pendingOrder, pendingTimeLeft, handleAutoDecline]);
+
+  // Accept Pending Order (within 5 minutes) -> sets status to 'In Transit'
+  const handleAcceptPending = async () => {
+    if (!pendingOrder) return;
+    setOrderAccepting(true);
+    const orderKey = pendingOrder._id || pendingOrder.orderId;
+
+    try {
+      await orderService.updateOrderStatus(orderKey, {
+        status: 'In Transit',
+      });
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Order accepted! En route to site.', ToastAndroid.SHORT);
+      }
+      setPendingOrder(null);
+      setPendingTimeLeft(300);
+      await loadDashboardData();
+    } catch (err) {
+      console.warn('[DashboardScreen] Could not accept order:', err);
+    } finally {
+      setOrderAccepting(false);
+    }
+  };
+
+  // Decline Pending Order manually
+  const handleDeclinePending = async () => {
+    if (!pendingOrder) return;
+    setOrderDeclining(true);
+    const orderKey = pendingOrder._id || pendingOrder.orderId;
+
+    try {
+      await orderService.updateOrderStatus(orderKey, {
+        status: 'Canceled',
+        reason: 'Declined by agent',
+        canceledBy: 'agent',
+      });
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Order declined.', ToastAndroid.SHORT);
+      }
+      setPendingOrder(null);
+      setPendingTimeLeft(300);
+      await loadDashboardData();
+    } catch (err) {
+      console.warn('[DashboardScreen] Could not decline order:', err);
+    } finally {
+      setOrderDeclining(false);
+    }
+  };
+
+  // Update In-Progress Task Status (e.g. In Transit -> In Progress, or In Progress -> Done)
+  const handleUpdateInProgressStatus = async (
+    order: BackendOrder,
+    newStatus: 'In Progress' | 'Done'
+  ) => {
+    const orderKey = order._id || order.orderId;
+    setUpdatingOrderId(orderKey);
+
+    try {
+      await orderService.updateOrderStatus(orderKey, {
+        status: newStatus,
+      });
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(
+          newStatus === 'In Progress'
+            ? 'Task started! Status: In Progress'
+            : 'Task marked as Completed!',
+          ToastAndroid.SHORT
+        );
+      }
+      await loadDashboardData();
+    } catch (err) {
+      console.warn('[DashboardScreen] Could not update task status:', err);
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
+  // Call customer dialer
+  const handleCallCustomer = (phone?: string) => {
+    if (!phone) {
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Customer phone not provided', ToastAndroid.SHORT);
+      }
+      return;
+    }
+    const cleanNumber = phone.replace(/[^+\d]/g, '');
+    Linking.openURL(`tel:${cleanNumber}`).catch(() => {
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Unable to open phone dialer', ToastAndroid.SHORT);
+      }
+    });
+  };
+
+  // Directions in Maps
+  const handleOpenDirections = (order: BackendOrder) => {
+    const lat = order.location?.latitude;
+    const lng = order.location?.longitude;
+    const addr =
+      order.location?.address ||
+      [order.location?.flat, order.location?.street, order.location?.cluster, order.location?.city]
+        .filter(Boolean)
+        .join(', ');
+
+    let url = '';
+    if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
+      url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    } else if (addr) {
+      url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+    }
+
+    if (url) {
+      Linking.openURL(url).catch(() => {
+        if (Platform.OS === 'android') {
+          ToastAndroid.show('Unable to open Google Maps', ToastAndroid.SHORT);
+        }
+      });
+    }
+  };
+
+  // Pull-down refresh with 30s cooldown
+  const REFRESH_COOLDOWN_MS = 30 * 1000;
+  const lastRefreshTimeRef = useRef<number>(0);
 
   const handleRefresh = async () => {
+    const now = Date.now();
+    const timeSinceLast = now - lastRefreshTimeRef.current;
+    if (timeSinceLast < REFRESH_COOLDOWN_MS && lastRefreshTimeRef.current !== 0) {
+      const remainingSec = Math.ceil((REFRESH_COOLDOWN_MS - timeSinceLast) / 1000);
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(
+          `Please wait ${remainingSec}s before refreshing again`,
+          ToastAndroid.SHORT
+        );
+      }
+      setRefreshing(false);
+      return;
+    }
+
+    lastRefreshTimeRef.current = now;
     setRefreshing(true);
     try {
+      await pollNewOrders();
       await loadDashboardData();
     } finally {
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    if (orderState !== 'pending' || timeLeft <= 0) {
-      return;
-    }
-    const interval = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [orderState, timeLeft]);
-
-  const handleAccept = () => {
-    setOrderState('locking');
-    setTimeout(() => {
-      setOrderState('locked');
-    }, 700);
+  // Format countdown mm:ss
+  const formatCountdown = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  const handleDecline = () => {
-    setOrderState('declined');
-  };
-
-  const handleResetOrder = () => {
-    setTimeLeft(38);
-    setOrderState('pending');
-  };
-
-  const isExpired = timeLeft === 0 && orderState === 'pending';
+  const isPendingExpired = pendingTimeLeft <= 0;
 
   return (
     <ScrollView
@@ -277,118 +654,297 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
           tintColor={colors.colorPrimary}
         />
       }>
-      {/* Real-time Incoming Order Alert (Bento Focal Item) */}
-      {orderState !== 'declined' ? (
-        <View
-          style={[
-            styles.orderAlertCard,
-            (isExpired || orderState === 'locked') && styles.cardDimmed,
-          ]}>
-          {/* Header with Countdown and Distance */}
+      {/* 1. Real-time Incoming Pending Order Alert with 5-Minute Timer */}
+      {pendingOrder && (
+        <View style={styles.pendingOrderCard}>
+          {/* Header Row: Countdown and Cluster */}
           <View style={styles.orderHeaderRow}>
             <View style={styles.countdownBadge}>
               <Text style={styles.countdownIcon}>⏱</Text>
               <Text style={styles.countdownText}>
-                {isExpired
-                  ? 'Expired'
-                  : `00:${timeLeft < 10 ? '0' : ''}${timeLeft} remaining`}
+                {isPendingExpired
+                  ? 'Expired (Auto-Declining...)'
+                  : `${formatCountdown(pendingTimeLeft)} remaining`}
               </Text>
             </View>
 
             <View style={styles.distanceBadge}>
               <Text style={styles.distanceIcon}>📍</Text>
-              <Text style={styles.distanceText}>1.2 km away</Text>
+              <Text style={styles.distanceText}>
+                {pendingOrder.location?.cluster ||
+                  pendingOrder.location?.city ||
+                  'Assigned Cluster'}
+              </Text>
             </View>
           </View>
 
-          {/* Job Details & Image */}
+          {/* Job Details */}
           <View style={styles.jobDetailsRow}>
-            <View style={styles.jobImageContainer}>
-              <Image
-                source={{ uri: SAMPLE_JOB_IMAGE }}
-                style={styles.jobImage}
-                resizeMode="cover"
-              />
-              <View style={styles.jobCategoryBadge}>
-                <Text style={styles.jobCategoryGlyph}>🔧</Text>
-              </View>
+            <View style={styles.jobIconBox}>
+              <Text style={styles.jobCategoryGlyph}>⚡</Text>
             </View>
 
             <View style={styles.jobMeta}>
               <View style={styles.jobPriceRow}>
-                <Text style={styles.jobTag}>INSTANT DISPATCH</Text>
-                <Text style={styles.jobPrice}>₹450</Text>
+                <Text style={styles.pendingJobTag}>NEW DISPATCH</Text>
+                <Text style={styles.jobPrice}>₹{pendingOrder.totalPrice || 0}</Text>
               </View>
               <Text style={styles.jobTitle} numberOfLines={1}>
-                Kitchen Pipe Leakage
+                {pendingOrder.taskTitle}
               </Text>
               <Text style={styles.jobLocation} numberOfLines={1}>
-                Tower B, Flat 804 • Palm Heights
+                {pendingOrder.location?.address ||
+                  [
+                    pendingOrder.location?.flat,
+                    pendingOrder.location?.street,
+                    pendingOrder.location?.cluster,
+                    pendingOrder.location?.city,
+                  ]
+                    .filter(Boolean)
+                    .join(', ') ||
+                  'Society Site Location'}
               </Text>
             </View>
           </View>
 
-          {/* Payout Details Chip */}
-          <View style={styles.payoutChip}>
-            <View style={styles.payoutLeft}>
-              <Text style={styles.payoutIcon}>💰</Text>
-              <Text style={styles.payoutText}>Eligible for Resident Tip</Text>
-            </View>
-            <Text style={styles.surgeText}>+₹50 Surge Added</Text>
-          </View>
-
-          {/* Micro Notice */}
-          <View style={styles.microNoticeRow}>
-            <Text style={styles.boltIcon}>⚡</Text>
-            <Text style={styles.microNoticeText}>
-              First agent to accept locks this job instantly across the society hub.
-            </Text>
-          </View>
-
-          {/* Action Buttons */}
-          {orderState === 'locked' ? (
-            <View style={styles.lockedBanner}>
-              <Text style={styles.lockedIcon}>✓</Text>
-              <Text style={styles.lockedText}>
-                Order Locked • Navigating to Palm Heights
+          {/* Customer mini info */}
+          {pendingOrder.customer && (
+            <View style={styles.customerStrip}>
+              <Text style={styles.customerNameText} numberOfLines={1}>
+                👤 {pendingOrder.customer.name || 'Resident Customer'}
               </Text>
-            </View>
-          ) : (
-            <View style={styles.actionsRow}>
-              <TouchableOpacity
-                style={styles.declineButton}
-                onPress={handleDecline}
-                activeOpacity={0.8}
-                disabled={isExpired}>
-                <Text style={styles.declineButtonText}>Decline</Text>
-              </TouchableOpacity>
-
-              <GradientButton
-                style={[styles.acceptButton, isExpired && styles.acceptButtonDisabled]}
-                onPress={handleAccept}
-                disabled={isExpired || orderState === 'locking'}
-                loading={orderState === 'locking'}
-                loadingText="Locking Job..."
-                icon={<Text style={styles.acceptIcon}>✓</Text>}
-                title="Accept Order"
-                textStyle={styles.acceptButtonText}
-              />
+              {pendingOrder.customer.phone && (
+                <Text style={styles.customerPhoneText}>
+                  {pendingOrder.customer.phone}
+                </Text>
+              )}
             </View>
           )}
-        </View>
-      ) : (
-        <View style={styles.declinedNoticeCard}>
-          <Text style={styles.declinedText}>Order dismissed. Listening for nearby tasks...</Text>
-          <GradientButton
-            onPress={handleResetOrder}
-            style={styles.reopenButton}
-            title="Simulate New Job"
-            textStyle={styles.reopenButtonText}
-          />
+
+          {/* Actions: Decline & Accept */}
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={styles.declineButton}
+              onPress={handleDeclinePending}
+              activeOpacity={0.8}
+              disabled={isPendingExpired || orderDeclining || orderAccepting}>
+              {orderDeclining ? (
+                <ActivityIndicator size="small" color={colors.onSurface} />
+              ) : (
+                <Text style={styles.declineButtonText}>Decline</Text>
+              )}
+            </TouchableOpacity>
+
+            <GradientButton
+              style={[
+                styles.acceptButton,
+                isPendingExpired && styles.acceptButtonDisabled,
+              ]}
+              onPress={handleAcceptPending}
+              disabled={isPendingExpired || orderAccepting || orderDeclining}
+              loading={orderAccepting}
+              loadingText="Accepting..."
+              icon={<Text style={styles.acceptIcon}>✓</Text>}
+              title="Accept Order"
+              textStyle={styles.acceptButtonText}
+            />
+          </View>
         </View>
       )}
 
-      {/* Quick Duty Performance Ribbon: Today's Visits, On-Time Gate, Weekly Earn */}
+      {/* 2. In-Progress Orders Section ("Show All Inprocess API card also as inprogresss") */}
+      {inProgressOrders.length > 0 && (
+        <View style={styles.inProgressSection}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionTitleWrap}>
+              <Text style={styles.sectionPulseDot}>🟢</Text>
+              <Text style={styles.sectionTitle}>Active Tasks In Progress</Text>
+            </View>
+            <View style={styles.activeCountPill}>
+              <Text style={styles.activeCountPillText}>
+                {inProgressOrders.length} {inProgressOrders.length === 1 ? 'Job' : 'Jobs'}
+              </Text>
+            </View>
+          </View>
+
+          {inProgressOrders.map(order => {
+            const isTransit = order.status === 'In Transit';
+            const isUpdating = updatingOrderId === (order._id || order.orderId);
+            const fullAddress =
+              order.location?.address ||
+              [
+                order.location?.flat,
+                order.location?.street,
+                order.location?.cluster,
+                order.location?.city,
+              ]
+                .filter(Boolean)
+                .join(', ') ||
+              'Assigned Customer Site';
+
+            return (
+              <View
+                key={order._id || order.orderId}
+                style={styles.inProgressCard}>
+                {/* Status Badge & Order ID */}
+                <View style={styles.inProgressHeader}>
+                  <View
+                    style={[
+                      styles.inProgressStatusBadge,
+                      isTransit
+                        ? styles.badgeTransit
+                        : styles.badgeInProgress,
+                    ]}>
+                    <Text style={styles.inProgressStatusIcon}>
+                      {isTransit ? '🚲' : '⚡'}
+                    </Text>
+                    <Text style={styles.inProgressStatusText}>
+                      {isTransit
+                        ? 'In Transit • En Route'
+                        : 'In Progress • On Site'}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.orderIdText}>
+                    #{order.orderId || order._id.slice(-6).toUpperCase()}
+                  </Text>
+                </View>
+
+                {/* Job Info */}
+                <View style={styles.inProgressBody}>
+                  <View style={styles.inProgressMainRow}>
+                    <View style={styles.inProgressTitleCol}>
+                      <Text style={styles.inProgressTaskTitle} numberOfLines={2}>
+                        {order.taskTitle}
+                      </Text>
+                      {order.taskCategoryNames && order.taskCategoryNames.length > 0 && (
+                        <Text style={styles.inProgressCategoryText}>
+                          {order.taskCategoryNames.join(', ')}
+                        </Text>
+                      )}
+                    </View>
+
+                    <View style={styles.inProgressPriceCol}>
+                      <Text style={styles.inProgressPriceText}>
+                        ₹{order.totalPrice || 0}
+                      </Text>
+                      <Text style={styles.inProgressPaymentMethod}>
+                        {order.paymentMethod || 'Prepaid / COD'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Customer & Address Card Box */}
+                  <View style={styles.customerInfoBox}>
+                    <View style={styles.customerLine}>
+                      <Text style={styles.customerIcon}>👤</Text>
+                      <Text style={styles.customerNameValue} numberOfLines={1}>
+                        {order.customer?.name || 'Resident Customer'}
+                      </Text>
+                      {order.customer?.phone && (
+                        <TouchableOpacity
+                          style={styles.miniCallBtn}
+                          onPress={() => handleCallCustomer(order.customer?.phone)}
+                          activeOpacity={0.7}>
+                          <Text style={styles.miniCallBtnText}>📞 Call</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    <View style={styles.addressLine}>
+                      <Text style={styles.addressIcon}>📍</Text>
+                      <Text style={styles.addressText} numberOfLines={2}>
+                        {fullAddress}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.miniMapBtn}
+                        onPress={() => handleOpenDirections(order)}
+                        activeOpacity={0.7}>
+                        <Text style={styles.miniMapBtnText}>🗺️ Maps</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Action CTAs */}
+                  <View style={styles.inProgressActionRow}>
+                    {isTransit ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.advanceStatusButton,
+                          isUpdating && styles.buttonDisabled,
+                        ]}
+                        onPress={() =>
+                          handleUpdateInProgressStatus(order, 'In Progress')
+                        }
+                        disabled={isUpdating}
+                        activeOpacity={0.85}>
+                        {isUpdating ? (
+                          <ActivityIndicator size="small" color={colors.white} />
+                        ) : (
+                          <>
+                            <Text style={styles.advanceButtonIcon}>📍</Text>
+                            <Text style={styles.advanceButtonText}>
+                              Reached Site • Start Job
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={[
+                          styles.completeTaskButton,
+                          isUpdating && styles.buttonDisabled,
+                        ]}
+                        onPress={() =>
+                          handleUpdateInProgressStatus(order, 'Done')
+                        }
+                        disabled={isUpdating}
+                        activeOpacity={0.85}>
+                        {isUpdating ? (
+                          <ActivityIndicator size="small" color={colors.white} />
+                        ) : (
+                          <>
+                            <Text style={styles.advanceButtonIcon}>✓</Text>
+                            <Text style={styles.completeButtonText}>
+                              Complete Task & Collect
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    )}
+
+                    {order.customer?.phone && (
+                      <TouchableOpacity
+                        style={styles.secondaryCallButton}
+                        onPress={() => handleCallCustomer(order.customer?.phone)}
+                        activeOpacity={0.8}>
+                        <Text style={styles.secondaryCallButtonText}>📞 Call</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {/* 3. Standby Card if neither pending order nor in-progress orders */}
+      {!pendingOrder && inProgressOrders.length === 0 && (
+        <View style={styles.standbyCard}>
+          <View style={styles.standbyIconContainer}>
+            <Text style={styles.standbyIcon}>⚡</Text>
+          </View>
+          <View style={styles.standbyTextColumn}>
+            <Text style={styles.standbyTitle}>Duty Active • Ready for Tasks</Text>
+            <Text style={styles.standbySubtitle}>
+              Polling live society dispatches every 30 seconds. New incoming tasks will appear here in real-time.
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* 4. Quick Duty Performance Ribbon: Today's Visits, On-Time Gate, Weekly Earn */}
       <View style={styles.metricsRibbonRow}>
         <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Today's Visits</Text>
@@ -412,7 +968,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         </View>
       </View>
 
-      {/* Key Metrics & Performance Bento Grid */}
+      {/* 5. Key Metrics & Performance Bento Grid */}
       <View style={styles.bentoGrid}>
         {/* Today's Total */}
         <View style={styles.bentoCard}>
@@ -424,16 +980,16 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
           </View>
 
           <View style={styles.bentoMiddle}>
-            <Text style={styles.metricBig}>₹1,280</Text>
+            <Text style={styles.metricBig}>{todayTotalEarnings}</Text>
             <View style={styles.metricSubRow}>
               <Text style={styles.trendIcon}>↗</Text>
-              <Text style={styles.trendText}>4 completed jobs</Text>
+              <Text style={styles.trendText}>{todayCompletedJobs}</Text>
             </View>
           </View>
 
           <View style={styles.bentoBottomPill}>
             <Text style={styles.pillLabel}>Month</Text>
-            <Text style={styles.pillValue}>₹18,450</Text>
+            <Text style={styles.pillValue}>{monthTotalEarnings}</Text>
           </View>
         </View>
 
@@ -448,126 +1004,88 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
 
           <View style={styles.bentoMiddle}>
             <View style={styles.ratingRow}>
-              <Text style={styles.metricBig}>4.9</Text>
-              <Text style={styles.starGlyph}>★</Text>
+              <Text style={styles.metricBig}>{performanceRating}</Text>
+              {performanceRating !== '-' && (
+                <Text style={styles.starGlyph}>★</Text>
+              )}
             </View>
-            <Text style={styles.quarterText}>142 Orders this quarter</Text>
+            <Text style={styles.quarterText}>{ordersQuarterCount}</Text>
           </View>
 
           <View style={styles.bentoBottomPill}>
             <Text style={styles.pillLabel}>Completion</Text>
             <Text style={[styles.pillValue, styles.completionHighlight]}>
-              98.6%
+              {completionRate}
             </Text>
           </View>
         </View>
       </View>
 
-      {/* Today's Activity Strip / Last Few Orders */}
+      {/* 6. Today's Activity Strip / Last Few Orders */}
       <View style={styles.activityCard}>
         <View style={styles.activityHeader}>
-          <Text style={styles.activityTitle}>Last Few Orders</Text>
-          <Text style={styles.activityShift}>Shift: 08:30 - Present</Text>
+          <Text style={styles.activityTitle}>Recent Orders</Text>
+          <Text style={styles.activityShift}>Live Task Feed</Text>
         </View>
 
         <View style={styles.activityList}>
-                {recentOrders.length > 0 ? (
-                  recentOrders.map(item => {
-                    const isDone = item.status === 'Done';
-                    const isTransit = item.status === 'In Transit';
-                    return (
-                      <View key={item._id || item.orderId} style={styles.activityItem}>
-                        <View
-                          style={[
-                            styles.activityIconCircle,
-                            isDone
-                              ? styles.activityIconDone
-                              : isTransit
-                                ? styles.activityIconTransit
-                                : styles.activityIconAlert,
-                          ]}>
-                          <Text style={styles.activityGlyph}>
-                            {isDone ? '✓' : isTransit ? '🚲' : '⚡'}
-                          </Text>
-                        </View>
-                        <View style={styles.activityContent}>
-                          <View style={styles.activityRowTop}>
-                            <Text style={styles.activityJobTitle} numberOfLines={1}>
-                              {item.taskTitle}
-                            </Text>
-                            <Text
-                              style={
-                                isDone
-                                  ? styles.statusDone
-                                  : isTransit
-                                    ? styles.statusTransit
-                                    : styles.statusAlert
-                              }>
-                              {isDone ? `₹${item.totalPrice} Done` : item.status}
-                            </Text>
-                          </View>
-                          <Text style={styles.activityJobSub} numberOfLines={1}>
-                            {item.location?.address || item.location?.cluster || 'KWEEKO Society Hub'}
-                          </Text>
-                        </View>
-                      </View>
-                    );
-                  })
-                ) : (
-                  <>
-                    {/* Order 1: Active In Transit */}
-                    <View style={styles.activityItem}>
-                      <View style={[styles.activityIconCircle, styles.activityIconTransit]}>
-                        <Text style={styles.activityGlyph}>🚲</Text>
-                      </View>
-                      <View style={styles.activityContent}>
-                        <View style={styles.activityRowTop}>
-                          <Text style={styles.activityJobTitle}>Plumbing Tool Restock</Text>
-                          <Text style={styles.statusTransit}>In Transit</Text>
-                        </View>
-                        <Text style={styles.activityJobSub}>KWEEKO Society Hub #4 • Sector 12</Text>
-                      </View>
+          {recentOrders.length > 0 ? (
+            recentOrders.map(item => {
+              const isDone = item.status === 'Done';
+              const isTransit = item.status === 'In Transit';
+              return (
+                <View key={item._id || item.orderId} style={styles.activityItem}>
+                  <View
+                    style={[
+                      styles.activityIconCircle,
+                      isDone
+                        ? styles.activityIconDone
+                        : isTransit
+                        ? styles.activityIconTransit
+                        : styles.activityIconAlert,
+                    ]}>
+                    <Text style={styles.activityGlyph}>
+                      {isDone ? '✓' : isTransit ? '🚲' : '⚡'}
+                    </Text>
+                  </View>
+                  <View style={styles.activityContent}>
+                    <View style={styles.activityRowTop}>
+                      <Text style={styles.activityJobTitle} numberOfLines={1}>
+                        {item.taskTitle}
+                      </Text>
+                      <Text
+                        style={
+                          isDone
+                            ? styles.statusDone
+                            : isTransit
+                            ? styles.statusTransit
+                            : styles.statusAlert
+                        }>
+                        {isDone ? `₹${item.totalPrice} Done` : item.status}
+                      </Text>
                     </View>
-
-                    {/* Order 2: Completed */}
-                    <View style={styles.activityItem}>
-                      <View style={[styles.activityIconCircle, styles.activityIconDone]}>
-                        <Text style={styles.activityGlyph}>✓</Text>
-                      </View>
-                      <View style={styles.activityContent}>
-                        <View style={styles.activityRowTop}>
-                          <Text style={styles.activityJobTitle}>
-                            Bathroom Tap Seal Replacement
-                          </Text>
-                          <Text style={styles.statusDone}>₹380 Done</Text>
-                        </View>
-                        <Text style={styles.activityJobSub}>
-                          Tower A, Flat 301 • Completed 11:15 AM
-                        </Text>
-                      </View>
-                    </View>
-
-                      {/* Order 3: Completed */}
-                      <View style={styles.activityItem}>
-                        <View style={[styles.activityIconCircle, styles.activityIconDone]}>
-                          <Text style={styles.activityGlyph}>✓</Text>
-                        </View>
-                        <View style={styles.activityContent}>
-                          <View style={styles.activityRowTop}>
-                            <Text style={styles.activityJobTitle}>Main Valve Inspection</Text>
-                            <Text style={styles.statusDone}>₹450 Done</Text>
-                          </View>
-                          <Text style={styles.activityJobSub}>
-                            Villa 18 • Completed 09:40 AM
-                          </Text>
-                        </View>
-                      </View>
-                </>
-          )}
-              </View>
+                    <Text style={styles.activityJobSub} numberOfLines={1}>
+                      {item.location?.address ||
+                        item.location?.cluster ||
+                        item.location?.city ||
+                        'KWEEKO Society Hub'}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })
+          ) : (
+            <View style={styles.emptyRecentCard}>
+              <Text style={styles.emptyRecentTitle}>No Orders Yet</Text>
+              <Text style={styles.emptyRecentSubtitle}>
+                Tasks assigned to you will show up here as they are received.
+              </Text>
             </View>
-          </ScrollView>
-          );
+          )}
+        </View>
+      </View>
+    </ScrollView>
+  );
 }
 
           const styles = StyleSheet.create({
@@ -575,23 +1093,314 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
             flex: 1,
           backgroundColor: colors.surface,
   },
-          content: {
-            paddingHorizontal: 16,
-          paddingTop: 16,
-          paddingBottom: 24,
-          gap: 16,
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
+    gap: 16,
   },
-          orderAlertCard: {
-            backgroundColor: colors.surfaceContainerLowest,
-          borderRadius: 16,
-          padding: 16,
-          borderWidth: 1,
-          borderColor: 'rgba(255, 88, 65, 0.25)',
-          shadowColor: colors.primaryContainer,
-          shadowOffset: {width: 0, height: 4 },
-          shadowOpacity: 0.18,
-          shadowRadius: 16,
-          elevation: 4,
+  pendingOrderCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(53, 37, 205, 0.35)',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  pendingJobTag: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: 0.6,
+  },
+  customerStrip: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FAF8FF',
+    borderWidth: 1,
+    borderColor: '#EAEDFF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  customerNameText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#131B2E',
+    flex: 1,
+  },
+  customerPhoneText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  inProgressSection: {
+    gap: 12,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
+  sectionTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sectionPulseDot: {
+    fontSize: 10,
+  },
+  sectionTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#131B2E',
+  },
+  activeCountPill: {
+    backgroundColor: '#EEF0FF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  activeCountPillText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  inProgressCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#EAEDFF',
+    padding: 16,
+    shadowColor: 'rgba(53, 37, 205, 0.06)',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  inProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  inProgressStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    gap: 5,
+  },
+  badgeTransit: {
+    backgroundColor: '#EEF0FF',
+  },
+  badgeInProgress: {
+    backgroundColor: '#ECFDF5',
+  },
+  inProgressStatusIcon: {
+    fontSize: 12,
+  },
+  inProgressStatusText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#131B2E',
+  },
+  orderIdText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  inProgressBody: {
+    gap: 12,
+  },
+  inProgressMainRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  inProgressTitleCol: {
+    flex: 1,
+  },
+  inProgressTaskTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#131B2E',
+    lineHeight: 20,
+  },
+  inProgressCategoryText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  inProgressPriceCol: {
+    alignItems: 'flex-end',
+  },
+  inProgressPriceText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  inProgressPaymentMethod: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 2,
+  },
+  customerInfoBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 10,
+    gap: 8,
+  },
+  customerLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  customerIcon: {
+    fontSize: 13,
+  },
+  customerNameValue: {
+    flex: 1,
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  miniCallBtn: {
+    backgroundColor: '#EEF0FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  miniCallBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  addressLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  addressIcon: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  addressText: {
+    flex: 1,
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    color: '#475569',
+    lineHeight: 16,
+  },
+  miniMapBtn: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  miniMapBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  inProgressActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 2,
+  },
+  advanceStatusButton: {
+    flex: 2,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  completeTaskButton: {
+    flex: 2,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: '#059669', // Emerald
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  buttonDisabled: {
+    opacity: 0.65,
+  },
+  advanceButtonIcon: {
+    fontSize: 14,
+    color: colors.white,
+  },
+  advanceButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  completeButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  secondaryCallButton: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryCallButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  orderAlertCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 88, 65, 0.25)',
+    shadowColor: colors.primaryContainer,
+    shadowOffset: {width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 4,
   },
           cardDimmed: {
             opacity: 0.7,
@@ -640,9 +1449,78 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   },
           jobDetailsRow: {
             flexDirection: 'row',
-          gap: 12,
-          alignItems: 'center',
-  },
+            gap: 12,
+            alignItems: 'center',
+          },
+          jobIconBox: {
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            backgroundColor: colors.surfaceContainer,
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+          standbyCard: {
+            backgroundColor: '#FFFFFF',
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: '#EAEDFF',
+            padding: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 14,
+            shadowColor: 'rgba(53, 37, 205, 0.05)',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 1,
+            shadowRadius: 6,
+            elevation: 2,
+          },
+          standbyIconContainer: {
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: '#EEF0FF',
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+          standbyIcon: {
+            fontSize: 22,
+          },
+          standbyTextColumn: {
+            flex: 1,
+          },
+          standbyTitle: {
+            fontFamily: typography.fontFamily,
+            fontSize: 14,
+            fontWeight: '700',
+            color: '#131B2E',
+            marginBottom: 2,
+          },
+          standbySubtitle: {
+            fontFamily: typography.fontFamily,
+            fontSize: 12,
+            color: '#64748B',
+            lineHeight: 17,
+          },
+          emptyRecentCard: {
+            paddingVertical: 24,
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+          emptyRecentTitle: {
+            fontFamily: typography.fontFamily,
+            fontSize: 14,
+            fontWeight: '600',
+            color: '#64748B',
+            marginBottom: 4,
+          },
+          emptyRecentSubtitle: {
+            fontFamily: typography.fontFamily,
+            fontSize: 12,
+            color: '#94A3B8',
+            textAlign: 'center',
+            paddingHorizontal: 20,
+          },
           jobImageContainer: {
             width: 64,
           height: 64,

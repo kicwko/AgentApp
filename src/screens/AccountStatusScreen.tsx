@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,9 +12,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  ToastAndroid,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader } from '../components/AppHeader';
 import { GradientButton } from '../components/GradientButton';
 import { mediaPickerService, type PickedMediaResult } from '../services/mediaPickerService';
@@ -131,8 +133,13 @@ export function AccountStatusScreen({
   onRefreshStatus,
   onDocumentsSubmitted,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const isBlocked = (accountData.status || '').toLowerCase() === 'blocked';
   const theme = projectTheme;
+
+  // 30-second cooldown to prevent accidental / rapid duplicate refresh calls
+  const REFRESH_COOLDOWN_MS = 30 * 1000;
+  const lastRefreshTimeRef = useRef<number>(0);
 
   // Form states for the 3 Pending Documents
   // 1. Selfie
@@ -725,8 +732,23 @@ export function AccountStatusScreen({
     }
   };
 
-  // Re-check account status
+  // Re-check account status with 30s throttling condition
   const handleRefresh = async () => {
+    const now = Date.now();
+    const timeSinceLast = now - lastRefreshTimeRef.current;
+    if (timeSinceLast < REFRESH_COOLDOWN_MS && lastRefreshTimeRef.current !== 0) {
+      const remainingSec = Math.ceil((REFRESH_COOLDOWN_MS - timeSinceLast) / 1000);
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(
+          `Please wait ${remainingSec}s before refreshing again`,
+          ToastAndroid.SHORT
+        );
+      }
+      setRefreshing(false);
+      return;
+    }
+
+    lastRefreshTimeRef.current = now;
     setRefreshing(true);
     try {
       // 1. Fetch live pending checklist & documents
@@ -790,7 +812,10 @@ export function AccountStatusScreen({
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: 80 + Math.max(insets.bottom, 14) },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           refreshControl={
@@ -1607,6 +1632,7 @@ export function AccountStatusScreen({
             {
               backgroundColor: theme.cardBg,
               borderTopColor: theme.border,
+              paddingBottom: Math.max(insets.bottom, 14),
             },
           ]}>
           <GradientButton

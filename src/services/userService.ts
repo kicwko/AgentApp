@@ -145,11 +145,7 @@ export const userService = {
     const cleanPhone = params.phone ? params.phone.replace(/\D/g, '').slice(-10) : '';
     const userEmail =
       params.email ||
-      (cleanPhone === '8800313434'
-        ? 'whyigive@gmail.com'
-        : cleanPhone
-        ? `${cleanPhone}@kweecko.partner`
-        : undefined);
+      (cleanPhone ? `${cleanPhone}@kweecko.partner` : undefined);
 
     // Query syncFirebaseUser by email / uid / phone (read-only live DB retrieval)
     try {
@@ -193,6 +189,47 @@ export const userService = {
     userData: Partial<BackendUser>
   ): Promise<ApiResponse<BackendUser>> => {
     return apiClient.post<BackendUser>(API_CONFIG.endpoints.registerUser, userData);
+  },
+
+  // Update partner duty / availability status in backend database (real-time toggle)
+  updateDutyStatus: async (params: {
+    phone?: string | null;
+    userId?: string | null;
+    email?: string | null;
+    fullName?: string | null;
+    isOnDuty: boolean;
+  }): Promise<ApiResponse<BackendUser>> => {
+    const cleanPhone = params.phone ? params.phone.replace(/\D/g, '').slice(-10) : '';
+    const payload: any = {
+      phone: cleanPhone || undefined,
+      email: params.email || undefined,
+      fullName: params.fullName || undefined,
+      availability: params.isOnDuty,
+      availabilty: params.isOnDuty,
+      isOnDuty: params.isOnDuty,
+      dutyStatus: params.isOnDuty ? 'ON' : 'OFF',
+      preferences: {
+        isOnDuty: params.isOnDuty,
+      },
+    };
+
+    // 1. Try PUT /api/users/:id if userId exists (e.g. MongoDB _id or agentId)
+    if (params.userId) {
+      try {
+        const putRes = await apiClient.put<BackendUser>(
+          `${API_CONFIG.endpoints.users}/${params.userId}`,
+          payload
+        );
+        if (putRes && (putRes.success || putRes.data)) {
+          return putRes;
+        }
+      } catch {
+        // Fallback to register / sync endpoint below
+      }
+    }
+
+    // 2. Also sync to POST /api/users/register (updates or registers in MongoDB)
+    return apiClient.post<BackendUser>(API_CONFIG.endpoints.registerUser, payload);
   },
 
   // Sync or register Firebase / Google authenticated user with backend database

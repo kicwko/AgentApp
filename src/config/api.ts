@@ -17,6 +17,7 @@ export const API_CONFIG = {
   endpoints: {
     health: '/health',
     orders: '/orders',
+    ordersPoll: '/orders/poll',
     categories: '/categories',
     users: '/users',
     registerUser: '/users/register',

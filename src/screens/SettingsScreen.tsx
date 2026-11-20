@@ -70,23 +70,18 @@ export function SettingsScreen({
   // Form states for live DB syncing
   const [fullNameInput, setFullNameInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
-  const [selectedProfessions, setSelectedProfessions] = useState<string[]>([
-    'Electrician',
-    'Plumber',
-  ]);
-  const [baseInspectionRate, setBaseInspectionRate] = useState('199');
-  const [hourlyRateInput, setHourlyRateInput] = useState('250');
+  const [selectedProfessions, setSelectedProfessions] = useState<string[]>([]);
+  const [baseInspectionRate, setBaseInspectionRate] = useState('');
+  const [hourlyRateInput, setHourlyRateInput] = useState('');
   const [serviceRadius, setServiceRadius] = useState(5);
-  const [assignedCluster, setAssignedCluster] = useState(
-    'Prestige Palms, Sobha Forest & 4 Societies'
-  );
+  const [assignedCluster, setAssignedCluster] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountLast4, setAccountLast4] = useState('');
   const [upiId, setUpiId] = useState('');
   const [instantPayout, setInstantPayout] = useState(false);
-  const [vehicleType, setVehicleType] = useState('Hero Splendor');
-  const [vehicleNumber, setVehicleNumber] = useState('KA01ER8842');
-  const [kitCertified, setKitCertified] = useState(true);
+  const [vehicleType, setVehicleType] = useState('');
+  const [vehicleNumber, setVehicleNumber] = useState('');
+  const [kitCertified, setKitCertified] = useState(false);
 
   const hasBankDetails = Boolean(
     (bankName && bankName.trim()) ||
@@ -116,8 +111,24 @@ export function SettingsScreen({
     ]).start(() => setToastMessage(null));
   };
 
+  // 30-second cooldown for manual pull-to-refresh
+  const REFRESH_COOLDOWN_MS = 30 * 1000;
+  const lastRefreshTimeRef = useRef<number>(0);
+
   // Sync real user profile from live backend using login mobile / email
   const fetchUserProfile = async (isManualRefresh = false) => {
+    if (isManualRefresh) {
+      const now = Date.now();
+      const timeSinceLast = now - lastRefreshTimeRef.current;
+      if (timeSinceLast < REFRESH_COOLDOWN_MS && lastRefreshTimeRef.current !== 0) {
+        const remainingSec = Math.ceil((REFRESH_COOLDOWN_MS - timeSinceLast) / 1000);
+        showToast(`Please wait ${remainingSec}s before refreshing again`);
+        setRefreshing(false);
+        return;
+      }
+      lastRefreshTimeRef.current = now;
+    }
+
     try {
       if (isManualRefresh) setRefreshing(true);
       const cleanPhone = (user.phoneNumber || '')
@@ -125,7 +136,7 @@ export function SettingsScreen({
         .slice(-10);
 
       const res = await userService.fetchPartnerProfile({
-        phone: cleanPhone || user.phoneNumber || '8800313434',
+        phone: cleanPhone || user.phoneNumber || undefined,
         email: user.email || undefined,
         uid: user.uid,
       });
@@ -138,10 +149,10 @@ export function SettingsScreen({
         const realName =
           u.fullName && u.fullName !== 'User' && u.fullName !== 'Service Partner'
             ? u.fullName
-            : (user.displayName || 'Swapnil Srivastava');
+            : (user.displayName || '');
 
         setFullNameInput(realName);
-        setEmailInput(u.email || user.email || 'whyigive@gmail.com');
+        setEmailInput(u.email || user.email || '');
 
         // Populate local states with live saved values
         if (u.professions && u.professions.length > 0) {
@@ -227,7 +238,7 @@ export function SettingsScreen({
   ) => {
     setSaving(true);
     try {
-      const cleanPhone = (user.phoneNumber || dbUser?.phone || '8800313434')
+      const cleanPhone = (user.phoneNumber || dbUser?.phone || '')
         .replace(/\D/g, '')
         .slice(-10);
 
@@ -238,27 +249,27 @@ export function SettingsScreen({
         dbUser.fullName !== 'User' &&
         dbUser.fullName !== 'Service Partner'
           ? dbUser.fullName
-          : (user.displayName || 'Swapnil Srivastava'));
+          : (user.displayName || ''));
 
       const payload: Partial<BackendUser> = {
-        phone: cleanPhone || '8800313434',
+        phone: cleanPhone || undefined,
         email:
           updates.email ||
           emailInput ||
           user.email ||
           dbUser?.email ||
-          'whyigive@gmail.com',
-        fullName: resolvedName,
+          undefined,
+        fullName: resolvedName || 'Partner',
         service:
           updates.service ||
           (selectedProfessions.length > 0
             ? selectedProfessions[0]
-            : 'Electrician'),
+            : dbUser?.service || undefined),
         professions: updates.professions || selectedProfessions,
         hourlyRate:
           updates.hourlyRate !== undefined
             ? updates.hourlyRate
-            : Number(hourlyRateInput) || 250,
+            : hourlyRateInput ? Number(hourlyRateInput) : undefined,
         cluster: updates.cluster || assignedCluster,
         hasVehicle: updates.hasVehicle || (vehicleType ? 'Yes' : 'No'),
         vehicleType: updates.vehicleType || vehicleType,
@@ -267,7 +278,7 @@ export function SettingsScreen({
         rating:
           dbUser?.rating !== undefined && dbUser.rating !== null
             ? dbUser.rating
-            : 4.9,
+            : undefined,
         availability:
           updates.availability !== undefined ? updates.availability : isOnDuty,
         preferences: {
@@ -289,7 +300,7 @@ export function SettingsScreen({
             updates.preferences?.payoutUpi !== undefined
               ? updates.preferences.payoutUpi
               : upiId,
-          baseInspectionRate: Number(baseInspectionRate) || 199,
+          baseInspectionRate: baseInspectionRate ? Number(baseInspectionRate) : undefined,
           serviceRadius:
             updates.preferences?.serviceRadius !== undefined
               ? updates.preferences.serviceRadius
@@ -379,7 +390,7 @@ export function SettingsScreen({
   };
 
   // Computed display values strictly reflecting DB data
-  const cleanPhone = (user.phoneNumber || dbUser?.phone || '8800313434')
+  const cleanPhone = (user.phoneNumber || dbUser?.phone || '')
     .replace(/\D/g, '')
     .slice(-10);
 
@@ -388,16 +399,22 @@ export function SettingsScreen({
     dbUser.fullName !== 'User' &&
     dbUser.fullName !== 'Service Partner'
       ? dbUser.fullName
-      : (fullNameInput || user.displayName || 'Swapnil Srivastava');
+      : (fullNameInput || (user.displayName && user.displayName !== 'User' ? user.displayName : '') || 'Partner');
 
   const partnerId =
     dbUser?.agentId ||
-    (cleanPhone ? `KWK-AGNT-${cleanPhone}` : 'KWK-AGNT-8800313434');
+    dbUser?.applicationId ||
+    (cleanPhone ? `KWK-AGNT-${cleanPhone}` : 'KWK-AGNT');
 
   const userRating =
     dbUser?.rating !== undefined && dbUser?.rating !== null
       ? Number(dbUser.rating).toFixed(1)
-      : '4.9';
+      : '-';
+
+  const policeValidDate =
+    dbUser?.policeVerification?.expiryDate ||
+    dbUser?.preferences?.policeVerificationValid ||
+    (dbUser?.policeVerification?.status === 'Approved' ? 'Verified' : 'Under Review');
 
   const avatarUrl =
     dbUser?.photo || dbUser?.avatar || user.photoURL || DEFAULT_AVATAR;
@@ -482,12 +499,17 @@ export function SettingsScreen({
 
               {/* Badges */}
               <View style={styles.pillBadgesRow}>
-                <View style={styles.tradePill}>
+                <GradientButton
+                  style={styles.tradePill}
+                  contentStyle={styles.tradePillContent}
+                  onPress={() => setActiveModal('skills')}
+                  activeOpacity={0.8}
+                  accessibilityLabel="Profession Skills">
                   <Text style={styles.tradePillIcon}>🛠️</Text>
                   <Text style={styles.tradePillText} numberOfLines={1}>
                     {selectedProfessions.join(' & ') || 'Electrician'}
                   </Text>
-                </View>
+                </GradientButton>
 
                 <View style={styles.kycPill}>
                   <View style={styles.kycGreenDot} />
@@ -503,17 +525,19 @@ export function SettingsScreen({
               <Text style={styles.policeGavelIcon}>⚖️</Text>
               <Text style={styles.policeLabel}>
                 Police Verification:{' '}
-                <Text style={styles.policeValidDate}>Valid Dec 2026</Text>
+                <Text style={styles.policeValidDate}>{policeValidDate}</Text>
               </Text>
             </View>
 
-            <TouchableOpacity
+            <GradientButton
               style={styles.viewCardBtn}
+              contentStyle={styles.viewCardContent}
               onPress={() => setActiveModal('police')}
-              activeOpacity={0.7}>
+              activeOpacity={0.7}
+              accessibilityLabel="View Police Verification Card">
               <Text style={styles.viewCardText}>View Card</Text>
               <Text style={styles.viewCardChevron}>›</Text>
-            </TouchableOpacity>
+            </GradientButton>
           </View>
         </View>
 
@@ -548,17 +572,24 @@ export function SettingsScreen({
                     Service Categories & Skills
                   </Text>
                   <Text style={styles.menuItemSub} numberOfLines={1}>
-                    {selectedProfessions.join(', ')} • {selectedProfessions.length} Active Verticals
+                    {selectedProfessions.length > 0
+                      ? `${selectedProfessions.join(', ')} • ${selectedProfessions.length} Active`
+                      : dbUser?.service || 'General Service Partner'}
                   </Text>
                 </View>
               </View>
 
               <View style={styles.menuItemRight}>
-                <View style={styles.badgeCountPill}>
+                <GradientButton
+                  style={styles.badgeCountBtn}
+                  contentStyle={styles.badgeCountContent}
+                  onPress={() => setActiveModal('skills')}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Service Badges Count">
                   <Text style={styles.badgeCountText}>
                     {selectedProfessions.length} Badges
                   </Text>
-                </View>
+                </GradientButton>
                 <Text style={styles.chevronGlyph}>›</Text>
               </View>
             </TouchableOpacity>
@@ -581,7 +612,9 @@ export function SettingsScreen({
                 <View style={styles.menuTextGroup}>
                   <Text style={styles.menuItemTitle}>Price & Rate Cards</Text>
                   <Text style={styles.menuItemSub} numberOfLines={1}>
-                    Base Inspection ₹{baseInspectionRate} • Hourly ₹{hourlyRateInput} • Custom Society Slabs
+                    {baseInspectionRate || hourlyRateInput
+                      ? `Base Inspection ${baseInspectionRate ? `₹${baseInspectionRate}` : 'Standard'} • Hourly ${hourlyRateInput ? `₹${hourlyRateInput}` : 'Standard'}`
+                      : 'Standard Society Rate Cards'}
                   </Text>
                 </View>
               </View>
@@ -612,7 +645,7 @@ export function SettingsScreen({
                       Service Location & Geo-Fence
                     </Text>
                     <Text style={styles.menuItemSub} numberOfLines={1}>
-                      Assigned: {assignedCluster}
+                      Assigned: {assignedCluster || 'Assigned Society Hub'}
                     </Text>
                   </View>
                 </View>
@@ -677,19 +710,23 @@ export function SettingsScreen({
                 </View>
 
                 {hasBankDetails ? (
-                  <TouchableOpacity
+                  <GradientButton
                     style={styles.changeActionBtn}
+                    contentStyle={styles.changeActionContent}
                     onPress={() => setActiveModal('bank')}
-                    activeOpacity={0.7}>
+                    activeOpacity={0.7}
+                    accessibilityLabel="Change Bank Details">
                     <Text style={styles.changeActionText}>Change</Text>
-                  </TouchableOpacity>
+                  </GradientButton>
                 ) : (
-                  <TouchableOpacity
+                  <GradientButton
                     style={styles.addBankPillBtn}
+                    contentStyle={styles.addBankPillContent}
                     onPress={() => setActiveModal('bank')}
-                    activeOpacity={0.7}>
+                    activeOpacity={0.7}
+                    accessibilityLabel="Add Bank Details">
                     <Text style={styles.addBankPillText}>+ Add Details</Text>
-                  </TouchableOpacity>
+                  </GradientButton>
                 )}
               </View>
 
@@ -817,8 +854,9 @@ export function SettingsScreen({
           <TouchableOpacity
             style={styles.whatsAppCard}
             onPress={() => {
+              const supportPhone = '1800594256';
               const url =
-                'https://wa.me/918800313434?text=Hello%20KWEEKO%20Support%2C%20need%20assistance%20with%20my%20partner%20shift';
+                `https://wa.me/91${supportPhone}?text=Hello%20KWEEKO%20Support%2C%20need%20assistance%20with%20my%20partner%20shift`;
               Linking.openURL(url).catch(() => {
                 showToast('Unable to open WhatsApp');
               });
@@ -841,22 +879,16 @@ export function SettingsScreen({
 
         {/* Account Session & Sign Out */}
         <View style={styles.logoutSection}>
-          <TouchableOpacity
+          <GradientButton
             style={styles.logoutButton}
+            textStyle={styles.logoutButtonText}
             onPress={handleSignOutPress}
-            activeOpacity={0.8}
-            disabled={signingOut}>
-            {signingOut ? (
-              <ActivityIndicator color={colors.primary} size="small" />
-            ) : (
-              <>
-                <Text style={styles.logoutIconGlyph}>🚪</Text>
-                <Text style={styles.logoutButtonText}>
-                  Log out of Agent Session
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+            disabled={signingOut}
+            loading={signingOut}
+            loadingText="Logging out..."
+            icon={<Text style={styles.logoutIconGlyph}>🚪</Text>}
+            title="Log out of Agent Session"
+          />
 
           <View style={styles.appFooterMeta}>
             <Text style={styles.appVersionText}>
@@ -898,7 +930,7 @@ export function SettingsScreen({
                 style={styles.textInput}
                 value={fullNameInput}
                 onChangeText={setFullNameInput}
-                placeholder="Swapnil Srivastava"
+                placeholder="Enter full name"
               />
             </View>
 
@@ -906,7 +938,7 @@ export function SettingsScreen({
               <Text style={styles.inputLabel}>Registered Mobile (Verified)</Text>
               <TextInput
                 style={[styles.textInput, { backgroundColor: colors.surfaceContainer }]}
-                value={cleanPhone ? `+91 ${cleanPhone}` : '+91 8800313434'}
+                value={cleanPhone ? `+91 ${cleanPhone}` : 'Not available'}
                 editable={false}
               />
             </View>
@@ -917,7 +949,7 @@ export function SettingsScreen({
                 style={styles.textInput}
                 value={emailInput}
                 onChangeText={setEmailInput}
-                placeholder="whyigive@gmail.com"
+                placeholder="Enter email address"
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
@@ -930,8 +962,8 @@ export function SettingsScreen({
               onPress={() =>
                 saveProfileToDb(
                   {
-                    fullName: fullNameInput.trim() || 'Swapnil Srivastava',
-                    email: emailInput.trim(),
+                    fullName: fullNameInput.trim() || undefined,
+                    email: emailInput.trim() || undefined,
                   },
                   'Profile details updated successfully'
                 )
@@ -1056,7 +1088,7 @@ export function SettingsScreen({
                 keyboardType="numeric"
                 value={baseInspectionRate}
                 onChangeText={setBaseInspectionRate}
-                placeholder="199"
+                placeholder="e.g. 199"
               />
             </View>
 
@@ -1067,7 +1099,7 @@ export function SettingsScreen({
                 keyboardType="numeric"
                 value={hourlyRateInput}
                 onChangeText={setHourlyRateInput}
-                placeholder="250"
+                placeholder="e.g. 250"
               />
             </View>
 
@@ -1078,7 +1110,10 @@ export function SettingsScreen({
               onPress={() =>
                 saveProfileToDb(
                   {
-                    hourlyRate: Number(hourlyRateInput) || 250,
+                    hourlyRate: hourlyRateInput ? Number(hourlyRateInput) : undefined,
+                    preferences: {
+                      baseInspectionRate: baseInspectionRate ? Number(baseInspectionRate) : undefined,
+                    },
                   },
                   'Rate card updated successfully'
                 )
@@ -1138,7 +1173,7 @@ export function SettingsScreen({
                 style={styles.textInput}
                 value={assignedCluster}
                 onChangeText={setAssignedCluster}
-                placeholder="Prestige Palms, Sobha Forest & 4 Societies"
+                placeholder="e.g. Central City Hub"
               />
             </View>
 
@@ -1285,7 +1320,7 @@ export function SettingsScreen({
                 style={styles.textInput}
                 value={vehicleType}
                 onChangeText={setVehicleType}
-                placeholder="Hero Splendor"
+                placeholder="e.g. Motorcycle / Scooter / None"
               />
             </View>
 
@@ -1295,7 +1330,7 @@ export function SettingsScreen({
                 style={styles.textInput}
                 value={vehicleNumber}
                 onChangeText={setVehicleNumber}
-                placeholder="KA01ER8842"
+                placeholder="e.g. DL01AB1234"
                 autoCapitalize="characters"
               />
             </View>
@@ -1372,8 +1407,12 @@ export function SettingsScreen({
                 />
                 <View style={styles.policeMetaTextGroup}>
                   <Text style={styles.policeHolderName}>{displayName}</Text>
-                  <Text style={styles.policeIdTag}>ID: POL-BLR-2024-88912</Text>
-                  <Text style={styles.policeStatusTag}>Status: Cleared & Active</Text>
+                  <Text style={styles.policeIdTag}>
+                    ID: {dbUser?.policeVerification?.certificateNumber || 'POL-VERIFIED'}
+                  </Text>
+                  <Text style={styles.policeStatusTag}>
+                    Status: {dbUser?.policeVerification?.status || 'Active'}
+                  </Text>
                 </View>
               </View>
 
@@ -1385,17 +1424,17 @@ export function SettingsScreen({
                 <View style={styles.policeRowItem}>
                   <Text style={styles.policeKey}>Issuing Authority:</Text>
                   <Text style={styles.policeVal}>
-                    Bangalore City Police (SB)
+                    {dbUser?.policeVerification?.policeStation || 'Authorized City Police'}
                   </Text>
                 </View>
                 <View style={styles.policeRowItem}>
                   <Text style={styles.policeKey}>Validity Period:</Text>
-                  <Text style={styles.policeValHighlight}>Valid Till Dec 2026</Text>
+                  <Text style={styles.policeValHighlight}>{policeValidDate}</Text>
                 </View>
                 <View style={styles.policeRowItem}>
                   <Text style={styles.policeKey}>Residential Address:</Text>
                   <Text style={styles.policeVal}>
-                    {dbUser?.curAddress || 'Gaur City, Dadri'}
+                    {dbUser?.curAddress || dbUser?.location?.address || 'Registered Address'}
                   </Text>
                 </View>
               </View>
@@ -1682,22 +1721,26 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   tradePill: {
+    borderRadius: 12,
+    maxWidth: '75%',
+    shadowOpacity: 0.15,
+    elevation: 2,
+  },
+  tradePillContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.secondaryFixed,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 12,
-    maxWidth: '75%',
   },
   tradePillIcon: {
     fontSize: 11,
   },
   tradePillText: {
     fontSize: 11,
-    fontWeight: '600',
-    color: colors.secondary,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   kycPill: {
     flexDirection: 'row',
@@ -1749,23 +1792,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   viewCardBtn: {
+    borderRadius: 8,
+    shadowOpacity: 0.15,
+    elevation: 2,
+  },
+  viewCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EEF0FF',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D4D8FD',
     gap: 4,
   },
   viewCardText: {
-    color: '#3525CD',
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
   },
   viewCardChevron: {
-    color: '#3525CD',
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
   },
@@ -1884,16 +1929,22 @@ const styles = StyleSheet.create({
     gap: 6,
     marginLeft: 8,
   },
-  badgeCountPill: {
-    backgroundColor: colors.secondaryFixed,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+  badgeCountBtn: {
+    borderRadius: 8,
+    shadowOpacity: 0.15,
+    elevation: 2,
+  },
+  badgeCountContent: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   badgeCountText: {
     fontSize: 11,
-    fontWeight: '600',
-    color: colors.secondary,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   chevronGlyph: {
     fontSize: 20,
@@ -1952,17 +2003,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   changeActionBtn: {
-    backgroundColor: '#EEF0FF',
+    borderRadius: 8,
+    shadowOpacity: 0.15,
+    elevation: 2,
+  },
+  changeActionContent: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D4D8FD',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   changeActionText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#3525CD',
+    color: '#FFFFFF',
   },
   bankTitleRow: {
     flexDirection: 'row',
@@ -1987,15 +2042,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   addBankPillBtn: {
-    backgroundColor: '#3525CD',
+    borderRadius: 8,
+    shadowOpacity: 0.15,
+    elevation: 2,
+  },
+  addBankPillContent: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   addBankPillText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.white,
+    color: '#FFFFFF',
   },
   bankWarningBanner: {
     flexDirection: 'row',
@@ -2109,7 +2170,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 8,
-    backgroundColor: colors.errorContainer,
+    backgroundColor: '#EEF0FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2154,7 +2215,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 8,
-    backgroundColor: colors.tertiaryFixed,
+    backgroundColor: '#EEF0FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2183,23 +2244,22 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   logoutButton: {
-    backgroundColor: '#F2F3FF',
-    borderWidth: 1.5,
-    borderColor: '#C7D2FE',
-    borderRadius: 14,
+    width: '100%',
     minHeight: 48,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    borderRadius: 14,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
   logoutIconGlyph: {
     fontSize: 18,
+    color: colors.white,
   },
   logoutButtonText: {
-    color: '#3525CD',
-    fontSize: 14,
+    color: colors.white,
+    fontSize: 15,
     fontWeight: '700',
   },
   appFooterMeta: {
@@ -2331,8 +2391,8 @@ const styles = StyleSheet.create({
     borderColor: colors.surfaceContainer,
   },
   radiusBtnOptionActive: {
-    backgroundColor: colors.primaryFixed,
-    borderColor: colors.primary,
+    backgroundColor: '#3525CD',
+    borderColor: '#3525CD',
   },
   radiusBtnText: {
     fontSize: 13,
@@ -2340,7 +2400,8 @@ const styles = StyleSheet.create({
     color: colors.onSurface,
   },
   radiusBtnTextActive: {
-    color: colors.primary,
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   checkboxRowGroup: {
     marginVertical: 12,
@@ -2363,6 +2424,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 12,
+    backgroundColor: '#3525CD',
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,

@@ -597,4 +597,50 @@ describe('AccountStatusScreen', () => {
     expect(joined).not.toContain('Validate Face');
     expect(joined).not.toContain('Face++');
   });
+
+  it('enforces 30-second cooldown between refresh API calls', async () => {
+    const onRefreshStatusMock = jest.fn().mockResolvedValue({
+      status: 'Pending',
+      pendingReason: 'Waiting for admin approval',
+    });
+
+    let renderer: any;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <AccountStatusScreen
+          accountData={{
+            status: 'Pending',
+            userName: 'Cooldown Partner',
+            phone: '9863517683',
+          }}
+          onSignOut={jest.fn()}
+          onRefreshStatus={onRefreshStatusMock}
+        />
+      );
+    });
+
+    const root = renderer.root;
+    // Find the refresh button in the footer
+    const refreshButtons = root.findAll((n: any) => {
+      return (
+        typeof n.props?.onPress === 'function' &&
+        extractAllText(n.props?.children).includes('Refresh')
+      );
+    });
+
+    const footerRefresh = refreshButtons[0];
+    expect(footerRefresh).toBeTruthy();
+
+    // 1st Refresh: Should call onRefreshStatusMock
+    await ReactTestRenderer.act(async () => {
+      await footerRefresh.props.onPress();
+    });
+    expect(onRefreshStatusMock).toHaveBeenCalledTimes(1);
+
+    // 2nd Refresh immediately after: Must be throttled, so onRefreshStatusMock is NOT called again
+    await ReactTestRenderer.act(async () => {
+      await footerRefresh.props.onPress();
+    });
+    expect(onRefreshStatusMock).toHaveBeenCalledTimes(1);
+  });
 });

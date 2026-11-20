@@ -350,13 +350,7 @@ function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar
-        barStyle={
-          accountStatus && accountStatus.status !== 'Active'
-            ? 'light-content'
-            : 'dark-content'
-        }
-      />
+      <StatusBar barStyle="dark-content" />
       <View style={styles.container}>{content}</View>
     </SafeAreaProvider>
   );

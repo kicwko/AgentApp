@@ -69,10 +69,41 @@ export interface GetOrdersParams {
   limit?: number;
 }
 
+export interface PollOrdersParams {
+  lat?: number | null;
+  lng?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  since?: number | string;
+  lastOrderId?: string;
+  role?: 'agent' | 'customer' | 'any';
+  limit?: number;
+}
+
+export interface PollOrdersResponse {
+  success: boolean;
+  hasNewOrder?: boolean;
+  newOrdersCount?: number;
+  totalPendingCount?: number;
+  polledAt?: string;
+  timestamp?: number;
+  latestOrder?: BackendOrder;
+  orders?: BackendOrder[];
+  data?: BackendOrder[];
+  user?: any;
+}
+
 export const orderService = {
   // Query orders with optional filters
   getOrders: async (params?: GetOrdersParams): Promise<ApiResponse<BackendOrder[]>> => {
     return apiClient.get<BackendOrder[]>(API_CONFIG.endpoints.orders, params);
+  },
+
+  // Poll new pending orders (every 30s with lat & lng)
+  pollOrders: async (
+    params?: PollOrdersParams
+  ): Promise<ApiResponse<PollOrdersResponse>> => {
+    return apiClient.get<PollOrdersResponse>(API_CONFIG.endpoints.ordersPoll, params);
   },
 
   // Get single order details
@@ -90,8 +121,19 @@ export const orderService = {
     orderId: string,
     payload: { status: string; reason?: string; canceledBy?: string }
   ): Promise<ApiResponse<BackendOrder>> => {
+    try {
+      const res = await apiClient.put<BackendOrder>(
+        `${API_CONFIG.endpoints.orders}/${orderId}/status`,
+        payload
+      );
+      if (res && res.success) {
+        return res;
+      }
+    } catch {
+      // Fallback to /orders/:id directly if /status route differs
+    }
     return apiClient.put<BackendOrder>(
-      `${API_CONFIG.endpoints.orders}/${orderId}/status`,
+      `${API_CONFIG.endpoints.orders}/${orderId}`,
       payload
     );
   },
