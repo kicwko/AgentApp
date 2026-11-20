@@ -361,16 +361,25 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   // Auto-decline handler when 5 minutes expire
   const handleAutoDecline = useCallback(
     async (order: BackendOrder) => {
+      const orderKey = order._id || order.orderId;
+      orderPollingService.stopRinging().catch(() => {});
+      orderPollingService.clearLatestPendingOrder().catch(() => {});
+      setPendingOrder(null);
+      setPendingTimeLeft(0);
+
       try {
-        orderPollingService.stopRinging().catch(() => {});
-        orderPollingService.clearLatestPendingOrder().catch(() => {});
-        const orderKey = order._id || order.orderId;
         console.log('[DashboardScreen] 5-minute timer expired for order:', orderKey);
-        await orderService.updateOrderStatus(orderKey, {
-          status: 'Canceled',
-          reason: 'Expired - not accepted within 5 minutes',
-          canceledBy: 'system',
-        });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Auto-decline timeout')), 10000)
+        );
+        await Promise.race([
+          orderService.updateOrderStatus(orderKey, {
+            status: 'Canceled',
+            reason: 'Expired - not accepted within 5 minutes',
+            canceledBy: 'system',
+          }),
+          timeoutPromise,
+        ]);
         if (Platform.OS === 'android') {
           ToastAndroid.show(
             'Order expired and auto-declined.',
@@ -383,8 +392,8 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         orderPollingService.stopRinging().catch(() => {});
         orderPollingService.clearLatestPendingOrder().catch(() => {});
         setPendingOrder(null);
-        setPendingTimeLeft(300);
-        await loadDashboardData();
+        setPendingTimeLeft(0);
+        await loadDashboardData().catch(() => {});
       }
     },
     [loadDashboardData]
@@ -519,7 +528,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     pollNewOrders();
     const pollInterval = setInterval(() => {
       pollNewOrders();
-    }, 30000);
+    }, 15000);
 
     return () => {
       clearInterval(pollInterval);
@@ -554,52 +563,70 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   // Accept Pending Order (within 5 minutes) -> sets status to 'In Transit'
   const handleAcceptPending = async () => {
     if (!pendingOrder) return;
+    const orderToAccept = pendingOrder;
+    const orderKey = orderToAccept._id || orderToAccept.orderId;
+
+    // Immediately stop audio & dismiss modal optimistically so UI never freezes
     orderPollingService.stopRinging().catch(() => {});
     orderPollingService.clearLatestPendingOrder().catch(() => {});
-    setOrderAccepting(true);
-    const orderKey = pendingOrder._id || pendingOrder.orderId;
+    setPendingOrder(null);
+    setPendingTimeLeft(0);
+    setOrderAccepting(false);
+
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Order accepted! En route to site.', ToastAndroid.SHORT);
+    }
 
     try {
-      await orderService.updateOrderStatus(orderKey, {
-        status: 'In Transit',
-      });
-      if (Platform.OS === 'android') {
-        ToastAndroid.show('Order accepted! En route to site.', ToastAndroid.SHORT);
-      }
-      setPendingOrder(null);
-      setPendingTimeLeft(300);
-      await loadDashboardData();
-    } catch (err) {
-      console.warn('[DashboardScreen] Could not accept order:', err);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Accept order timeout')), 10000)
+      );
+      await Promise.race([
+        orderService.updateOrderStatus(orderKey, {
+          status: 'In Transit',
+        }),
+        timeoutPromise,
+      ]);
+    } catch (err: any) {
+      console.warn('[DashboardScreen] Error accepting order:', err?.message);
     } finally {
-      setOrderAccepting(false);
+      loadDashboardData().catch(() => {});
     }
   };
 
   // Decline Pending Order manually
   const handleDeclinePending = async () => {
     if (!pendingOrder) return;
+    const orderToDecline = pendingOrder;
+    const orderKey = orderToDecline._id || orderToDecline.orderId;
+
+    // Immediately stop audio & dismiss modal optimistically so UI never freezes
     orderPollingService.stopRinging().catch(() => {});
     orderPollingService.clearLatestPendingOrder().catch(() => {});
-    setOrderDeclining(true);
-    const orderKey = pendingOrder._id || pendingOrder.orderId;
+    setPendingOrder(null);
+    setPendingTimeLeft(0);
+    setOrderDeclining(false);
+
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Order declined.', ToastAndroid.SHORT);
+    }
 
     try {
-      await orderService.updateOrderStatus(orderKey, {
-        status: 'Canceled',
-        reason: 'Declined by agent',
-        canceledBy: 'agent',
-      });
-      if (Platform.OS === 'android') {
-        ToastAndroid.show('Order declined.', ToastAndroid.SHORT);
-      }
-      setPendingOrder(null);
-      setPendingTimeLeft(300);
-      await loadDashboardData();
-    } catch (err) {
-      console.warn('[DashboardScreen] Could not decline order:', err);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Decline order timeout')), 10000)
+      );
+      await Promise.race([
+        orderService.updateOrderStatus(orderKey, {
+          status: 'Canceled',
+          reason: 'Declined by agent',
+          canceledBy: 'agent',
+        }),
+        timeoutPromise,
+      ]);
+    } catch (err: any) {
+      console.warn('[DashboardScreen] Error declining order:', err?.message);
     } finally {
-      setOrderDeclining(false);
+      loadDashboardData().catch(() => {});
     }
   };
 
@@ -674,7 +701,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   };
 
   // Pull-down refresh with 30s cooldown
-  const REFRESH_COOLDOWN_MS = 30 * 1000;
+  const REFRESH_COOLDOWN_MS = 15 * 1000;
   const lastRefreshTimeRef = useRef<number>(0);
 
   const handleRefresh = async () => {

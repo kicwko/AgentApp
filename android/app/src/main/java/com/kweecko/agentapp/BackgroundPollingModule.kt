@@ -48,12 +48,27 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     @ReactMethod
     fun startBackgroundPolling(config: ReadableMap, promise: Promise) {
         try {
+            val phone = if (config.hasKey("phone")) config.getString("phone") else null
+            val userId = if (config.hasKey("userId")) config.getString("userId") else null
+            val token = if (config.hasKey("token")) config.getString("token") else null
+            val baseUrl = if (config.hasKey("baseUrl")) config.getString("baseUrl") else null
+
+            // Persist agent session to SharedPreferences so background service can always poll
+            val prefs = reactContext.getSharedPreferences("KwiqoAgentPrefs", Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                if (!phone.isNullOrBlank()) putString("phone", phone)
+                if (!userId.isNullOrBlank()) putString("userId", userId)
+                if (!token.isNullOrBlank()) putString("token", token)
+                if (!baseUrl.isNullOrBlank()) putString("baseUrl", baseUrl)
+                apply()
+            }
+
             val intent = Intent(reactContext, OrderPollingService::class.java).apply {
                 action = OrderPollingService.ACTION_START_POLLING
-                if (config.hasKey("phone")) putExtra("phone", config.getString("phone"))
-                if (config.hasKey("userId")) putExtra("userId", config.getString("userId"))
-                if (config.hasKey("token")) putExtra("token", config.getString("token"))
-                if (config.hasKey("baseUrl")) putExtra("baseUrl", config.getString("baseUrl"))
+                if (!phone.isNullOrBlank()) putExtra("phone", phone)
+                if (!userId.isNullOrBlank()) putExtra("userId", userId)
+                if (!token.isNullOrBlank()) putExtra("token", token)
+                if (!baseUrl.isNullOrBlank()) putExtra("baseUrl", baseUrl)
             }
 
             reactContext.startService(intent)
@@ -101,6 +116,7 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     @ReactMethod
     fun clearLatestPendingOrder(promise: Promise) {
         pendingOrderJson = null
+        OrderPollingService.resetLastNotifiedOrder()
         promise.resolve(true)
     }
 
@@ -108,6 +124,7 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     fun stopRinging(promise: Promise) {
         try {
             OrderRingtoneManager.stopRinging()
+            OrderPollingService.resetLastNotifiedOrder()
             val notificationManager = reactContext.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
             notificationManager?.cancel(1002) // OrderPollingService.ORDER_ALERT_NOTIFICATION_ID
             promise.resolve(true)

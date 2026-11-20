@@ -32,6 +32,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
         // 1. Immediately stop ringing and cancel notification
         OrderRingtoneManager.stopRinging()
+        OrderPollingService.resetLastNotifiedOrder()
+        BackgroundPollingModule.pendingOrderJson = null
 
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         notificationManager?.cancel(ORDER_ALERT_NOTIFICATION_ID)

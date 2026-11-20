@@ -50,7 +50,6 @@ export function IncomingDispatchModal({
   } catch {
     insets = { top: 24, bottom: 16, left: 0, right: 0 };
   }
-  const [showAcceptedSuccess, setShowAcceptedSuccess] = useState(false);
 
   // Animations for Radar Ripple & Call Pulse
   const rippleAnim1 = useRef(new Animated.Value(0)).current;
@@ -59,7 +58,6 @@ export function IncomingDispatchModal({
 
   useEffect(() => {
     if (!visible) {
-      setShowAcceptedSuccess(false);
       return;
     }
 
@@ -163,11 +161,6 @@ export function IncomingDispatchModal({
     try {
       Vibration.vibrate([0, 100, 60, 100]);
     } catch {}
-    setShowAcceptedSuccess(true);
-  };
-
-  const handleConfirmStartNavigation = async () => {
-    setShowAcceptedSuccess(false);
     await onAccept();
   };
 
@@ -358,33 +351,6 @@ export function IncomingDispatchModal({
             Tap Accept to lock request & launch turn-by-turn route
           </Text>
         </View>
-
-        {/* 4. Accepted Feedback Overlay Modal */}
-        {showAcceptedSuccess && (
-          <View style={styles.acceptedModalOverlay}>
-            <View style={styles.acceptedModalCard}>
-              <View style={styles.verifiedIconCircle}>
-                <Text style={styles.verifiedGlyph}>✓</Text>
-              </View>
-              <Text style={styles.acceptedTitle}>Job Accepted!</Text>
-              <Text style={styles.acceptedSubtitle}>
-                Routing to {locationText}.
-              </Text>
-
-              <View style={styles.guaranteeBox}>
-                <Text style={styles.guaranteeLabel}>Net Guarantee</Text>
-                <Text style={styles.guaranteeAmount}>₹{payout}</Text>
-              </View>
-
-              <TouchableOpacity
-                onPress={handleConfirmStartNavigation}
-                activeOpacity={0.88}
-                style={styles.startNavButton}>
-                <Text style={styles.startNavText}>Start Navigation</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
       </LinearGradient>
     </Modal>
   );

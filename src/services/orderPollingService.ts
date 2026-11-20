@@ -120,14 +120,14 @@ class OrderPollingServiceManager {
       }
     }
 
-    // 2. Run initial foreground poll immediately, then every 30 seconds
+    // 2. Run initial foreground poll immediately, then every 15 seconds
     await this.executeForegroundPoll();
     if (this.intervalTimer) {
       clearInterval(this.intervalTimer);
     }
     this.intervalTimer = setInterval(() => {
       this.executeForegroundPoll();
-    }, 30000);
+    }, 15000);
   }
 
   /**

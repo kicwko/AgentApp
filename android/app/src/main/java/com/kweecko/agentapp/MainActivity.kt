@@ -56,6 +56,9 @@ class MainActivity : ReactActivity() {
 
       val orderJson = intent?.getStringExtra("orderJson")
       if (!orderJson.isNullOrBlank()) {
+        intent?.removeExtra("orderJson")
+        intent?.removeExtra("orderId")
+        intent?.removeExtra("openOrder")
         BackgroundPollingModule.pendingOrderJson = orderJson
         BackgroundPollingModule.emitOrderEvent("onNewPendingOrder", orderJson)
       }

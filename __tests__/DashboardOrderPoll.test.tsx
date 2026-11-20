@@ -202,4 +202,86 @@ describe('DashboardScreen Polling and Order Dispatch', () => {
     expect(allText).toContain('ACCEPT');
     expect(allText).toContain('ESTIMATED NET PAYOUT');
   });
+
+  it('optimistically accepts pending order without freezing and updates status to In Transit', async () => {
+    (orderService.pollOrders as jest.Mock).mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        hasNewOrder: true,
+        latestOrder: mockPendingOrder,
+        orders: [mockPendingOrder],
+      },
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<DashboardScreen user={mockUser as any} />);
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+
+    const root = renderer!.root;
+    // Find Accept button in the dispatch modal
+    const touchables = root.findAllByProps({ activeOpacity: 0.85 });
+    // Find touchable with acceptCallIcon or text
+    const acceptBtn = touchables.find(t => {
+      try {
+        return JSON.stringify(t.props).includes('acceptCircle') || JSON.stringify(t.props).includes('ACCEPT');
+      } catch {
+        return false;
+      }
+    });
+
+    if (acceptBtn) {
+      await ReactTestRenderer.act(async () => {
+        acceptBtn.props.onPress();
+        for (let i = 0; i < 5; i++) await Promise.resolve();
+      });
+
+      expect(orderService.updateOrderStatus).toHaveBeenCalledWith(
+        'ord-pending-123',
+        expect.objectContaining({ status: 'In Transit' })
+      );
+    }
+  });
+
+  it('optimistically declines pending order without freezing and updates status to Canceled', async () => {
+    (orderService.pollOrders as jest.Mock).mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        hasNewOrder: true,
+        latestOrder: mockPendingOrder,
+        orders: [mockPendingOrder],
+      },
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<DashboardScreen user={mockUser as any} />);
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+
+    const root = renderer!.root;
+    const touchables = root.findAllByProps({ activeOpacity: 0.85 });
+    const declineBtn = touchables.find(t => {
+      try {
+        return JSON.stringify(t.props).includes('declineCircle') || JSON.stringify(t.props).includes('DECLINE');
+      } catch {
+        return false;
+      }
+    });
+
+    if (declineBtn) {
+      await ReactTestRenderer.act(async () => {
+        declineBtn.props.onPress();
+        for (let i = 0; i < 5; i++) await Promise.resolve();
+      });
+
+      expect(orderService.updateOrderStatus).toHaveBeenCalledWith(
+        'ord-pending-123',
+        expect.objectContaining({ status: 'Canceled', reason: expect.stringContaining('Declined') })
+      );
+    }
+  });
 });

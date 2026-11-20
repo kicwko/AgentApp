@@ -101,7 +101,7 @@ export const orderService = {
     return apiClient.get<BackendOrder[]>(API_CONFIG.endpoints.orders, params);
   },
 
-  // Poll new pending orders (every 30s with lat & lng)
+  // Poll new pending orders (every 15s with lat & lng + robust fallback)
   pollOrders: async (
     params?: PollOrdersParams
   ): Promise<ApiResponse<PollOrdersResponse>> => {
@@ -122,11 +122,43 @@ export const orderService = {
       customHeaders['x-user-id'] = resolvedUserId;
     }
 
-    return apiClient.get<PollOrdersResponse>(
-      API_CONFIG.endpoints.ordersPoll,
-      params,
-      { headers: customHeaders }
-    );
+    try {
+      const res = await apiClient.get<PollOrdersResponse>(
+        API_CONFIG.endpoints.ordersPoll,
+        params,
+        { headers: customHeaders }
+      );
+      if (res.success && res.data) {
+        return res;
+      }
+      throw new Error(res.error || 'Primary poll unsuccessful');
+    } catch {
+      // Robust Fallback: query active pending orders directly
+      try {
+        const ordersRes = await apiClient.get<BackendOrder[]>(
+          API_CONFIG.endpoints.orders,
+          { status: 'Pending', limit: 20 },
+          { headers: customHeaders }
+        );
+        const orderList = Array.isArray(ordersRes.data) ? ordersRes.data : [];
+        return {
+          success: true,
+          data: {
+            success: true,
+            hasNewOrder: orderList.length > 0,
+            newOrdersCount: orderList.length,
+            totalPendingCount: orderList.length,
+            latestOrder: orderList[0],
+            orders: orderList,
+          },
+        };
+      } catch (fallbackErr: any) {
+        return {
+          success: false,
+          error: fallbackErr?.message || 'Failed to poll orders',
+        };
+      }
+    }
   },
 
   // Get single order details
