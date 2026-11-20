@@ -38,7 +38,7 @@ class OrderPollingService : Service() {
         private const val ORDER_ALERT_NOTIFICATION_ID = 1002
 
         const val CHANNEL_DUTY_ID = "kweecko_duty_channel"
-        const val CHANNEL_ORDERS_ID = "kweecko_order_persistent_alarm_v3"
+        const val CHANNEL_ORDERS_ID = "kweecko_order_alerts_v4"
 
         private const val DEFAULT_BASE_URL = "https://kweecko.com/api"
         private const val POLL_INTERVAL_SECONDS = 30L
@@ -79,7 +79,17 @@ class OrderPollingService : Service() {
             if (it.isNotBlank()) apiBaseUrl = it.trimEnd('/')
         }
 
-        startForegroundServiceWithNotification()
+        // Cancel and delete any ongoing background polling status notification
+        // so the user will never see a polling notification in the status bar/drawer
+        try {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            manager?.cancel(ONGOING_NOTIFICATION_ID)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                manager?.deleteNotificationChannel(CHANNEL_DUTY_ID)
+            }
+        } catch (_: Exception) {}
+
+        isServiceRunning = true
         startPolling()
 
         return START_STICKY
@@ -89,83 +99,30 @@ class OrderPollingService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-            // 1. Ongoing Duty Channel (Silent / Min priority so no continuous icon/banner)
-            val dutyChannel = NotificationChannel(
-                CHANNEL_DUTY_ID,
-                "Kweecko Service Status",
-                NotificationManager.IMPORTANCE_MIN
-            ).apply {
-                description = "Internal background dispatch polling channel."
-                setShowBadge(false)
-                setSound(null, null)
-                enableVibration(false)
-            }
-            manager.createNotificationChannel(dutyChannel)
-
-            // 2. High-Priority Order Alerts Channel
-            // Sound is exclusively handled by OrderRingtoneManager via MediaPlayer
-            // to avoid duplicate / overlapping ringtones playing from both push notification and app simultaneously.
+            // Remove legacy channels if present
             try {
+                manager.deleteNotificationChannel(CHANNEL_DUTY_ID)
                 manager.deleteNotificationChannel("kweecko_orders_channel")
                 manager.deleteNotificationChannel("kweecko_order_persistent_alarm_v3")
             } catch (_: Exception) {}
 
+            // High-Priority Order Alerts Channel (v4)
+            // Sound is exclusively handled by OrderRingtoneManager via MediaPlayer
+            // to prevent echo/duplicate ringtones playing simultaneously from both push notification and app.
             val ordersChannel = NotificationChannel(
                 CHANNEL_ORDERS_ID,
-                "Persistent Order Alerts",
+                "Order Alerts",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Urgent alerts when a new order is dispatched to you."
-                setSound(null, null) // Handled by OrderRingtoneManager MediaPlayer to prevent echo/overlap
+                description = "Alerts when a new order is dispatched to you."
+                setSound(null, null) // Handled exclusively by OrderRingtoneManager
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 1000, 500, 1000, 500)
                 setBypassDnd(true)
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 setShowBadge(true)
             }
             manager.createNotificationChannel(ordersChannel)
-        }
-    }
-
-    private fun startForegroundServiceWithNotification() {
-        val launchIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_DUTY_ID)
-            .setContentTitle("Kweecko Partner Active")
-            .setContentText("Background service active")
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setOngoing(false)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setContentIntent(pendingIntent)
-            .build()
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                // Android 14+ requires specifying foreground service types
-                startForeground(
-                    ONGOING_NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                )
-            } else {
-                startForeground(ONGOING_NOTIFICATION_ID, notification)
-            }
-            // Remove the ongoing notification immediately so user will not see polling notification all the time
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            manager?.cancel(ONGOING_NOTIFICATION_ID)
-            isServiceRunning = true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to startForeground: ${e.message}", e)
         }
     }
 
