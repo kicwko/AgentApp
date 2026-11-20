@@ -17,6 +17,8 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { GradientButton } from '../components/GradientButton';
 import { orderService, type BackendOrder } from '../services/orderService';
+import { orderPollingService } from '../services/orderPollingService';
+import { locationService } from '../services/locationService';
 import { userService } from '../services/userService';
 import type { User } from '../services/firebaseAuth';
 
@@ -265,36 +267,13 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
       return { lat: userLocation.latitude, lng: userLocation.longitude };
     }
 
-    if (Platform.OS === 'android') {
-      try {
-        const hasFine = await PermissionsAndroid.check(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-        );
-        if (!hasFine) {
-          await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-          );
-        }
-      } catch {
-        // Continue to fallback
+    try {
+      const live = await locationService.getCurrentCoordinates();
+      if (live && live.lat && live.lng) {
+        return { lat: live.lat, lng: live.lng };
       }
-    }
-
-    const nav = (globalThis as any).navigator;
-    if (nav?.geolocation?.getCurrentPosition) {
-      try {
-        const pos: any = await new Promise((resolve, reject) => {
-          nav.geolocation.getCurrentPosition(resolve, reject, {
-            timeout: 3000,
-            enableHighAccuracy: false,
-          });
-        });
-        if (pos?.coords?.latitude && pos?.coords?.longitude) {
-          return { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        }
-      } catch {
-        // Ignore and fallback
-      }
+    } catch (e) {
+      console.log('[DashboardScreen] Notice getting coordinates:', e);
     }
 
     // Default Delhi NCR / DLF Gurgaon Cluster coordinates
@@ -455,15 +434,44 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     }
   }, [getCoordinates, pendingOrder, handleAutoDecline, loadDashboardData]);
 
-  // Setup 30-second polling interval
+  // Setup 30-second polling interval & listen to background polling service events
   useEffect(() => {
+    // Listen to incoming orders from native background service or foreground poll
+    const unsubscribePending = orderPollingService.subscribeToPendingOrders(async incomingPending => {
+      const incomingKey = incomingPending._id || incomingPending.orderId;
+      const currentKey = pendingOrder ? pendingOrder._id || pendingOrder.orderId : null;
+
+      if (incomingKey !== currentKey) {
+        const createdMs = incomingPending.createdAt
+          ? new Date(incomingPending.createdAt).getTime()
+          : Date.now();
+        const elapsedSec = Math.max(0, Math.floor((Date.now() - createdMs) / 1000));
+        const remainSec = elapsedSec < 300 ? 300 - elapsedSec : 0;
+
+        if (remainSec <= 0) {
+          await handleAutoDecline(incomingPending);
+        } else {
+          setPendingOrder(incomingPending);
+          setPendingTimeLeft(remainSec);
+        }
+      }
+    });
+
+    const unsubscribePoll = orderPollingService.subscribeToPollResponses(() => {
+      loadDashboardData().catch(() => {});
+    });
+
     pollNewOrders();
     const pollInterval = setInterval(() => {
       pollNewOrders();
     }, 30000);
 
-    return () => clearInterval(pollInterval);
-  }, [pollNewOrders]);
+    return () => {
+      clearInterval(pollInterval);
+      unsubscribePending();
+      unsubscribePoll();
+    };
+  }, [pollNewOrders, pendingOrder, handleAutoDecline, loadDashboardData]);
 
   // 1-second Countdown Timer for Pending Order (5 Minutes)
   useEffect(() => {

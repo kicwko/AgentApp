@@ -3,6 +3,7 @@ import { Platform, StyleSheet, ToastAndroid, View } from 'react-native';
 import { AppFooter, type TabName } from '../components/AppFooter';
 import { AppHeader } from '../components/AppHeader';
 import type { User } from '../services/firebaseAuth';
+import { orderPollingService } from '../services/orderPollingService';
 import { userService, type BackendUser } from '../services/userService';
 import { colors } from '../theme/colors';
 import { DashboardScreen } from './DashboardScreen';
@@ -47,6 +48,25 @@ export function HomeScreen({ user, onSignOut }: Props) {
       })
       .catch(() => {});
   }, [user]);
+
+  // Keep background polling service active while On Duty
+  useEffect(() => {
+    const cleanPhone = (user?.phoneNumber || '').replace(/\D/g, '').slice(-10);
+    const userId = dbUser?._id || dbUser?.agentId || user?.uid;
+
+    if (isOnDuty) {
+      orderPollingService
+        .start({
+          phone: cleanPhone,
+          userId: userId || cleanPhone,
+        })
+        .catch(err => {
+          console.log('[HomeScreen] Notice starting polling service:', err);
+        });
+    } else {
+      orderPollingService.stop().catch(() => {});
+    }
+  }, [isOnDuty, user, dbUser]);
 
   // Toggle duty status and update database in real-time
   const handleToggleDuty = async () => {

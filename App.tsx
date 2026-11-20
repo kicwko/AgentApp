@@ -17,6 +17,7 @@ import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { configureGoogleSignIn } from './src/services/googleAuth';
 import { signOutUser, subscribeToAuthState, type User } from './src/services/firebaseAuth';
 import { sessionService } from './src/services/sessionService';
+import { locationService } from './src/services/locationService';
 import { userService } from './src/services/userService';
 import { colors } from './src/theme/colors';
 
@@ -49,6 +50,11 @@ function App() {
 
   useEffect(() => {
     configureGoogleSignIn();
+
+    // Proactively request fine, coarse, notifications, and background ("Allow all the time") location
+    locationService.requestLocationPermissions().catch(err => {
+      console.log('[App] Initial location permission notice:', err);
+    });
 
     let isMounted = true;
     // 1. Restore persisted partner session from AsyncStorage (survives app kill / recent swipe)
