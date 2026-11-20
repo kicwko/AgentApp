@@ -24,6 +24,7 @@ object OrderRingtoneManager {
     private var vibrator: Vibrator? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile
     private var isRinging = false
 
     // Auto-stop ringing after 5 minutes (300,000 ms) when order auto-declines
@@ -34,7 +35,7 @@ object OrderRingtoneManager {
 
     @Synchronized
     fun startRinging(context: Context) {
-        if (isRinging && mediaPlayer?.isPlaying == true) {
+        if (isRinging || mediaPlayer?.isPlaying == true) {
             Log.d(TAG, "Ringtone is already actively ringing. Ignoring duplicate start request.")
             return
         }

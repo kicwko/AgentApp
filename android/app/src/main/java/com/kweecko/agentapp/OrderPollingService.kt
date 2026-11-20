@@ -236,11 +236,17 @@ class OrderPollingService : Service() {
 
                 if (orderId.isNotBlank() && orderId != lastNotifiedOrderId) {
                     lastNotifiedOrderId = orderId
-                    // Start continuous ringing until user accepts or declines!
-                    OrderRingtoneManager.startRinging(applicationContext)
 
-                    showNewOrderAlertNotification(orderId, title, price)
-                    BackgroundPollingModule.emitOrderEvent("onNewPendingOrder", pendingOrderObj.toString())
+                    // Guard: only start ringing if ringtone is not ALREADY ringing!
+                    if (!OrderRingtoneManager.isCurrentlyRinging()) {
+                        OrderRingtoneManager.startRinging(applicationContext)
+                    }
+
+                    val orderJson = pendingOrderObj.toString()
+                    BackgroundPollingModule.pendingOrderJson = orderJson
+
+                    showNewOrderAlertNotification(orderId, title, price, orderJson)
+                    BackgroundPollingModule.emitOrderEvent("onNewPendingOrder", orderJson)
                 }
             }
         } catch (e: Exception) {
@@ -248,10 +254,11 @@ class OrderPollingService : Service() {
         }
     }
 
-    private fun showNewOrderAlertNotification(orderId: String, taskTitle: String, price: Double) {
+    private fun showNewOrderAlertNotification(orderId: String, taskTitle: String, price: Double, orderJson: String) {
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("orderId", orderId)
+            putExtra("orderJson", orderJson)
             putExtra("openOrder", true)
         }
         val pendingIntent = PendingIntent.getActivity(

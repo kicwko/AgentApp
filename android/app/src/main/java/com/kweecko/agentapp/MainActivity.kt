@@ -53,6 +53,12 @@ class MainActivity : ReactActivity() {
       val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
       manager?.cancel(1002) // OrderPollingService.ORDER_ALERT_NOTIFICATION_ID
       OrderRingtoneManager.stopRinging()
+
+      val orderJson = intent?.getStringExtra("orderJson")
+      if (!orderJson.isNullOrBlank()) {
+        BackgroundPollingModule.pendingOrderJson = orderJson
+        BackgroundPollingModule.emitOrderEvent("onNewPendingOrder", orderJson)
+      }
     } catch (_: Exception) {}
   }
 

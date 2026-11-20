@@ -22,6 +22,9 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
         const val MODULE_NAME = "BackgroundPollingModule"
         private var instance: BackgroundPollingModule? = null
 
+        @Volatile
+        var pendingOrderJson: String? = null
+
         fun emitOrderEvent(eventName: String, jsonPayload: String) {
             val inst = instance ?: return
             try {
@@ -81,11 +84,24 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     @ReactMethod
     fun startRinging(promise: Promise) {
         try {
-            OrderRingtoneManager.startRinging(reactContext)
+            if (!OrderRingtoneManager.isCurrentlyRinging()) {
+                OrderRingtoneManager.startRinging(reactContext)
+            }
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("RINGING_ERROR", e.message, e)
         }
+    }
+
+    @ReactMethod
+    fun getLatestPendingOrder(promise: Promise) {
+        promise.resolve(pendingOrderJson)
+    }
+
+    @ReactMethod
+    fun clearLatestPendingOrder(promise: Promise) {
+        pendingOrderJson = null
+        promise.resolve(true)
     }
 
     @ReactMethod

@@ -175,4 +175,31 @@ describe('DashboardScreen Polling and Order Dispatch', () => {
       })
     );
   });
+
+  it('renders full screen IncomingDispatchModal with Instant Dispatch badge and Accept/Decline call buttons', async () => {
+    (orderService.pollOrders as jest.Mock).mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        hasNewOrder: true,
+        latestOrder: mockPendingOrder,
+        orders: [mockPendingOrder],
+      },
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<DashboardScreen user={mockUser as any} />);
+      for (let i = 0; i < 15; i++) await Promise.resolve();
+    });
+
+    const root = renderer!.root;
+    const textNodes = root.findAllByType(Text).map(t => t.props.children);
+    const allText = JSON.stringify(textNodes);
+
+    expect(allText).toContain('INSTANT DISPATCH');
+    expect(allText).toContain('DECLINE');
+    expect(allText).toContain('ACCEPT');
+    expect(allText).toContain('ESTIMATED NET PAYOUT');
+  });
 });

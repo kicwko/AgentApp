@@ -16,6 +16,7 @@ import {
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { GradientButton } from '../components/GradientButton';
+import { IncomingDispatchModal } from '../components/IncomingDispatchModal';
 import { orderService, type BackendOrder } from '../services/orderService';
 import { orderPollingService } from '../services/orderPollingService';
 import { locationService } from '../services/locationService';
@@ -361,7 +362,8 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   const handleAutoDecline = useCallback(
     async (order: BackendOrder) => {
       try {
-        orderPollingService.stopRinging();
+        orderPollingService.stopRinging().catch(() => {});
+        orderPollingService.clearLatestPendingOrder().catch(() => {});
         const orderKey = order._id || order.orderId;
         console.log('[DashboardScreen] 5-minute timer expired for order:', orderKey);
         await orderService.updateOrderStatus(orderKey, {
@@ -378,7 +380,8 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
       } catch (err) {
         console.warn('[DashboardScreen] Error auto-declining expired order:', err);
       } finally {
-        orderPollingService.stopRinging();
+        orderPollingService.stopRinging().catch(() => {});
+        orderPollingService.clearLatestPendingOrder().catch(() => {});
         setPendingOrder(null);
         setPendingTimeLeft(300);
         await loadDashboardData();
@@ -427,7 +430,10 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
             if (remainSec <= 0) {
               await handleAutoDecline(incomingPending);
             } else {
-              orderPollingService.startRinging().catch(() => {});
+              const isRinging = await orderPollingService.isRinging();
+              if (!isRinging) {
+                orderPollingService.startRinging().catch(() => {});
+              }
               setPendingOrder(incomingPending);
               setPendingTimeLeft(remainSec);
             }
@@ -444,6 +450,25 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
 
   // Setup 30-second polling interval & listen to background polling service events
   useEffect(() => {
+    // Check if an order was delivered via push notification click before listeners mounted
+    orderPollingService.getLatestPendingOrder().then(async latestPending => {
+      if (latestPending) {
+        const createdMs = latestPending.createdAt
+          ? new Date(latestPending.createdAt).getTime()
+          : Date.now();
+        const elapsedSec = Math.max(0, Math.floor((Date.now() - createdMs) / 1000));
+        const remainSec = elapsedSec < 300 ? 300 - elapsedSec : 0;
+        if (remainSec > 0) {
+          const isRinging = await orderPollingService.isRinging();
+          if (!isRinging) {
+            orderPollingService.startRinging().catch(() => {});
+          }
+          setPendingOrder(latestPending);
+          setPendingTimeLeft(remainSec);
+        }
+      }
+    });
+
     // Listen to incoming orders from native background service or foreground poll
     const unsubscribePending = orderPollingService.subscribeToPendingOrders(async incomingPending => {
       const incomingKey = incomingPending._id || incomingPending.orderId;
@@ -459,7 +484,10 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         if (remainSec <= 0) {
           await handleAutoDecline(incomingPending);
         } else {
-          orderPollingService.startRinging().catch(() => {});
+          const isRinging = await orderPollingService.isRinging();
+          if (!isRinging) {
+            orderPollingService.startRinging().catch(() => {});
+          }
           setPendingOrder(incomingPending);
           setPendingTimeLeft(remainSec);
         }
@@ -473,6 +501,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     const unsubscribeAccepted = orderPollingService.subscribeToAcceptedAction(orderId => {
       console.log('[DashboardScreen] Order accepted via notification action:', orderId);
       orderPollingService.stopRinging().catch(() => {});
+      orderPollingService.clearLatestPendingOrder().catch(() => {});
       setPendingOrder(null);
       setPendingTimeLeft(300);
       loadDashboardData().catch(() => {});
@@ -481,6 +510,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     const unsubscribeDeclined = orderPollingService.subscribeToDeclinedAction(orderId => {
       console.log('[DashboardScreen] Order declined via notification action:', orderId);
       orderPollingService.stopRinging().catch(() => {});
+      orderPollingService.clearLatestPendingOrder().catch(() => {});
       setPendingOrder(null);
       setPendingTimeLeft(300);
       loadDashboardData().catch(() => {});
@@ -525,6 +555,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   const handleAcceptPending = async () => {
     if (!pendingOrder) return;
     orderPollingService.stopRinging().catch(() => {});
+    orderPollingService.clearLatestPendingOrder().catch(() => {});
     setOrderAccepting(true);
     const orderKey = pendingOrder._id || pendingOrder.orderId;
 
@@ -549,6 +580,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   const handleDeclinePending = async () => {
     if (!pendingOrder) return;
     orderPollingService.stopRinging().catch(() => {});
+    orderPollingService.clearLatestPendingOrder().catch(() => {});
     setOrderDeclining(true);
     const orderKey = pendingOrder._id || pendingOrder.orderId;
 
@@ -680,8 +712,9 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   const isPendingExpired = pendingTimeLeft <= 0;
 
   return (
-    <ScrollView
-      style={styles.container}
+    <>
+      <ScrollView
+        style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
       refreshControl={
@@ -1123,6 +1156,18 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         </View>
       </View>
     </ScrollView>
+
+    {/* Full Screen Incoming Dispatch Alert Popup */}
+    <IncomingDispatchModal
+      visible={!!pendingOrder}
+      order={pendingOrder}
+      timeLeftSeconds={pendingTimeLeft}
+      onAccept={handleAcceptPending}
+      onDecline={handleDeclinePending}
+      isAccepting={orderAccepting}
+      isDeclining={orderDeclining}
+    />
+  </>
   );
 }
 

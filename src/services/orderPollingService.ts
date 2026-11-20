@@ -21,6 +21,7 @@ class OrderPollingServiceManager {
   private intervalTimer: ReturnType<typeof setInterval> | null = null;
   private eventEmitter: NativeEventEmitter | null = null;
   private currentConfig: PollingConfig = {};
+  private cachedPendingOrder: BackendOrder | null = null;
 
   private pendingOrderSubscribers: Set<OrderCallback> = new Set();
   private pollResponseSubscribers: Set<PollResponseCallback> = new Set();
@@ -50,6 +51,7 @@ class OrderPollingServiceManager {
       try {
         const order: BackendOrder =
           typeof payload === 'string' ? JSON.parse(payload) : payload;
+        this.cachedPendingOrder = order;
         this.notifyPendingOrderSubscribers(order);
       } catch (err) {
         console.warn('[OrderPollingService] Failed parsing native pending order:', err);
@@ -290,6 +292,39 @@ class OrderPollingServiceManager {
       }
     }
     return false;
+  }
+
+  /**
+   * Get latest pending order delivered via push notification click or background service.
+   */
+  public async getLatestPendingOrder(): Promise<BackendOrder | null> {
+    const mod = this.getNativeModule();
+    if (Platform.OS === 'android' && mod?.getLatestPendingOrder) {
+      try {
+        const raw = await mod.getLatestPendingOrder();
+        if (raw) {
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          this.cachedPendingOrder = parsed;
+          return parsed;
+        }
+      } catch (err) {
+        console.warn('[OrderPollingService] Failed reading latest pending order:', err);
+      }
+    }
+    return this.cachedPendingOrder;
+  }
+
+  /**
+   * Clear latest pending order once handled.
+   */
+  public async clearLatestPendingOrder(): Promise<void> {
+    this.cachedPendingOrder = null;
+    const mod = this.getNativeModule();
+    if (Platform.OS === 'android' && mod?.clearLatestPendingOrder) {
+      try {
+        await mod.clearLatestPendingOrder();
+      } catch {}
+    }
   }
 
   public getIsRunning(): boolean {
