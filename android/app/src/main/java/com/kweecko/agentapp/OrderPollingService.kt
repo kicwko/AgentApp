@@ -89,35 +89,34 @@ class OrderPollingService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-            // 1. Ongoing Duty Channel (Low/Silent priority)
+            // 1. Ongoing Duty Channel (Silent / Min priority so no continuous icon/banner)
             val dutyChannel = NotificationChannel(
                 CHANNEL_DUTY_ID,
                 "Kweecko Service Status",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_MIN
             ).apply {
-                description = "Shows live duty status and background dispatch polling."
+                description = "Internal background dispatch polling channel."
                 setShowBadge(false)
+                setSound(null, null)
+                enableVibration(false)
             }
             manager.createNotificationChannel(dutyChannel)
 
-            // 2. High-Priority Order Alerts Channel (Persistent Alarm Sound & Vibrate)
+            // 2. High-Priority Order Alerts Channel
+            // Sound is exclusively handled by OrderRingtoneManager via MediaPlayer
+            // to avoid duplicate / overlapping ringtones playing from both push notification and app simultaneously.
             try {
                 manager.deleteNotificationChannel("kweecko_orders_channel")
+                manager.deleteNotificationChannel("kweecko_order_persistent_alarm_v3")
             } catch (_: Exception) {}
-
-            val soundUri = Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${packageName}/${R.raw.order_ringtone}")
-            val audioAttributes = AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .build()
 
             val ordersChannel = NotificationChannel(
                 CHANNEL_ORDERS_ID,
-                "Persistent Order Alarm",
+                "Persistent Order Alerts",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Urgent alerts when a new order is dispatched to you."
-                setSound(soundUri, audioAttributes)
+                setSound(null, null) // Handled by OrderRingtoneManager MediaPlayer to prevent echo/overlap
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 1000, 500, 1000, 500)
                 setBypassDnd(true)
@@ -141,10 +140,11 @@ class OrderPollingService : Service() {
 
         val notification = NotificationCompat.Builder(this, CHANNEL_DUTY_ID)
             .setContentTitle("Kweecko Partner Active")
-            .setContentText("Polling for nearby dispatches with live GPS...")
+            .setContentText("Background service active")
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .setContentIntent(pendingIntent)
             .build()
 
@@ -159,6 +159,10 @@ class OrderPollingService : Service() {
             } else {
                 startForeground(ONGOING_NOTIFICATION_ID, notification)
             }
+            // Remove the ongoing notification immediately so user will not see polling notification all the time
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            manager?.cancel(ONGOING_NOTIFICATION_ID)
             isServiceRunning = true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to startForeground: ${e.message}", e)
@@ -337,34 +341,30 @@ class OrderPollingService : Service() {
         )
 
         val formattedPrice = if (price > 0) "₹${price.toInt()}" else "Immediate Dispatch"
-        val soundUri = Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${packageName}/${R.raw.order_ringtone}")
 
+        // Order Alert Notification:
+        // - autoCancel(true) & ongoing(false): Cleared immediately when user clicks on it or swipes it away.
+        // - No sound attached here: Audio is exclusively handled by OrderRingtoneManager to avoid simultaneous/echo sounds.
+        // - No fullScreenIntent: Ensures app does NOT hijack or display over lock screen.
         val alertNotification = NotificationCompat.Builder(this, CHANNEL_ORDERS_ID)
             .setContentTitle("🔔 New Service Order Assigned!")
-            .setContentText("$taskTitle • $formattedPrice. Tap to accept within 5 mins.")
+            .setContentText("$taskTitle • $formattedPrice. Tap to view and respond.")
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("$taskTitle\nValue: $formattedPrice\nPersistent Alarm: Tap ACCEPT or DECLINE. Ringtone repeats until you respond.")
+                    .bigText("$taskTitle\nValue: $formattedPrice\nTap ACCEPT or DECLINE to respond.")
             )
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOngoing(true)
-            .setAutoCancel(false)
-            .setSound(soundUri)
+            .setOngoing(false)
+            .setAutoCancel(true)
             .setVibrate(longArrayOf(0, 1000, 500, 1000, 500))
             .setContentIntent(pendingIntent)
-            .setFullScreenIntent(pendingIntent, true)
             .setDeleteIntent(dismissPendingIntent)
             .addAction(R.mipmap.ic_launcher, "ACCEPT", acceptPendingIntent)
             .addAction(R.mipmap.ic_launcher, "DECLINE", declinePendingIntent)
             .build()
-
-        alertNotification.flags = alertNotification.flags or
-            Notification.FLAG_INSISTENT or
-            Notification.FLAG_NO_CLEAR or
-            Notification.FLAG_ONGOING_EVENT
 
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(ORDER_ALERT_NOTIFICATION_ID, alertNotification)

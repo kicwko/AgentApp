@@ -34,7 +34,10 @@ object OrderRingtoneManager {
 
     @Synchronized
     fun startRinging(context: Context) {
-        if (isRinging) return
+        if (isRinging && mediaPlayer?.isPlaying == true) {
+            Log.d(TAG, "Ringtone is already actively ringing. Ignoring duplicate start request.")
+            return
+        }
         isRinging = true
 
         try {
@@ -42,11 +45,11 @@ object OrderRingtoneManager {
             mainHandler.removeCallbacks(timeoutRunnable)
             mainHandler.postDelayed(timeoutRunnable, 300_000L)
 
-            // 1. Acquire partial wake lock so playback continues reliably even with screen off
+            // 1. Acquire partial wake lock so CPU can continue playing sound without turning screen on
             try {
                 val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
                 wakeLock = powerManager?.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    PowerManager.PARTIAL_WAKE_LOCK,
                     "Kweecko:OrderAlarmWakeLock"
                 )?.apply {
                     setReferenceCounted(false)

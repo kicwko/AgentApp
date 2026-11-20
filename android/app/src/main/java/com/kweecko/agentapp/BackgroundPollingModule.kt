@@ -96,6 +96,8 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     fun stopRinging(promise: Promise) {
         try {
             OrderRingtoneManager.stopRinging()
+            val notificationManager = reactContext.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            notificationManager?.cancel(1002) // OrderPollingService.ORDER_ALERT_NOTIFICATION_ID
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("STOP_RINGING_ERROR", e.message, e)

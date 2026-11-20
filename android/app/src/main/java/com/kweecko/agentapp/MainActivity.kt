@@ -1,5 +1,8 @@
 package com.kweecko.agentapp
 
+import android.app.NotificationManager
+import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -14,22 +17,43 @@ class MainActivity : ReactActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    // Ensure app is NOT displayed on top of the device lock screen
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-      setShowWhenLocked(true)
-      setTurnScreenOn(true)
+      setShowWhenLocked(false)
+      setTurnScreenOn(false)
     } else {
       @Suppress("DEPRECATION")
-      window?.addFlags(
+      window?.clearFlags(
         android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
         android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
       )
     }
+    handleDismissNotification()
     applyLightSystemBars()
+  }
+
+  override fun onNewIntent(intent: Intent?) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    handleDismissNotification()
   }
 
   override fun onResume() {
     super.onResume()
+    handleDismissNotification()
     applyLightSystemBars()
+  }
+
+  /**
+   * When user clicks on the push notification or returns to app,
+   * immediately dismiss the order alert notification and silence any active ringtone.
+   */
+  private fun handleDismissNotification() {
+    try {
+      val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+      manager?.cancel(1002) // OrderPollingService.ORDER_ALERT_NOTIFICATION_ID
+      OrderRingtoneManager.stopRinging()
+    } catch (_: Exception) {}
   }
 
   override fun onWindowFocusChanged(hasFocus: Boolean) {
