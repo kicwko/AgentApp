@@ -2,13 +2,16 @@ package com.kweecko.agentapp
 
 import android.Manifest
 import android.app.*
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.location.Location
 import android.location.LocationManager
+import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -35,7 +38,7 @@ class OrderPollingService : Service() {
         private const val ORDER_ALERT_NOTIFICATION_ID = 1002
 
         const val CHANNEL_DUTY_ID = "kweecko_duty_channel"
-        const val CHANNEL_ORDERS_ID = "kweecko_orders_channel"
+        const val CHANNEL_ORDERS_ID = "kweecko_order_persistent_alarm_v3"
 
         private const val DEFAULT_BASE_URL = "https://kweecko.com/api"
         private const val POLL_INTERVAL_SECONDS = 30L
@@ -97,15 +100,28 @@ class OrderPollingService : Service() {
             }
             manager.createNotificationChannel(dutyChannel)
 
-            // 2. High-Priority Order Alerts Channel (Sound & Vibrate)
+            // 2. High-Priority Order Alerts Channel (Persistent Alarm Sound & Vibrate)
+            try {
+                manager.deleteNotificationChannel("kweecko_orders_channel")
+            } catch (_: Exception) {}
+
+            val soundUri = Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${packageName}/${R.raw.order_ringtone}")
+            val audioAttributes = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .build()
+
             val ordersChannel = NotificationChannel(
                 CHANNEL_ORDERS_ID,
-                "New Order Alerts",
+                "Persistent Order Alarm",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Urgent alerts when a new order is dispatched to you."
+                setSound(soundUri, audioAttributes)
                 enableVibration(true)
-                vibrationPattern = longArrayOf(0, 500, 200, 500)
+                vibrationPattern = longArrayOf(0, 1000, 500, 1000, 500)
+                setBypassDnd(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                 setShowBadge(true)
             }
             manager.createNotificationChannel(ordersChannel)
@@ -321,26 +337,34 @@ class OrderPollingService : Service() {
         )
 
         val formattedPrice = if (price > 0) "₹${price.toInt()}" else "Immediate Dispatch"
+        val soundUri = Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${packageName}/${R.raw.order_ringtone}")
 
         val alertNotification = NotificationCompat.Builder(this, CHANNEL_ORDERS_ID)
             .setContentTitle("🔔 New Service Order Assigned!")
             .setContentText("$taskTitle • $formattedPrice. Tap to accept within 5 mins.")
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("$taskTitle\nValue: $formattedPrice\nTap ACCEPT or DECLINE. Ringing continues until you accept or decline.")
+                    .bigText("$taskTitle\nValue: $formattedPrice\nPersistent Alarm: Tap ACCEPT or DECLINE. Ringtone repeats until you respond.")
             )
             .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setAutoCancel(false)
+            .setSound(soundUri)
+            .setVibrate(longArrayOf(0, 1000, 500, 1000, 500))
             .setContentIntent(pendingIntent)
             .setFullScreenIntent(pendingIntent, true)
             .setDeleteIntent(dismissPendingIntent)
             .addAction(R.mipmap.ic_launcher, "ACCEPT", acceptPendingIntent)
             .addAction(R.mipmap.ic_launcher, "DECLINE", declinePendingIntent)
             .build()
+
+        alertNotification.flags = alertNotification.flags or
+            Notification.FLAG_INSISTENT or
+            Notification.FLAG_NO_CLEAR or
+            Notification.FLAG_ONGOING_EVENT
 
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(ORDER_ALERT_NOTIFICATION_ID, alertNotification)
