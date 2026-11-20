@@ -83,6 +83,31 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     }
 
     @ReactMethod
+    fun startRinging(promise: Promise) {
+        try {
+            OrderRingtoneManager.startRinging(reactContext)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("RINGING_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun stopRinging(promise: Promise) {
+        try {
+            OrderRingtoneManager.stopRinging()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("STOP_RINGING_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun isRinging(promise: Promise) {
+        promise.resolve(OrderRingtoneManager.isCurrentlyRinging())
+    }
+
+    @ReactMethod
     fun getCurrentLocation(promise: Promise) {
         try {
             val locationManager = reactContext.getSystemService(Context.LOCATION_SERVICE) as? LocationManager

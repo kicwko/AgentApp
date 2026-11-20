@@ -83,5 +83,22 @@ describe('Location & Background Polling Services', () => {
       await orderPollingService.stop();
       expect(NativeModules.BackgroundPollingModule.stopBackgroundPolling).toHaveBeenCalled();
     });
+
+    it('startRinging and stopRinging invoke native ringtone manager methods', async () => {
+      NativeModules.BackgroundPollingModule = {
+        startRinging: jest.fn().mockResolvedValueOnce(true),
+        stopRinging: jest.fn().mockResolvedValueOnce(true),
+        isRinging: jest.fn().mockResolvedValueOnce(true),
+      };
+
+      await orderPollingService.startRinging();
+      expect(NativeModules.BackgroundPollingModule.startRinging).toHaveBeenCalled();
+
+      const ringing = await orderPollingService.isRinging();
+      expect(ringing).toBe(true);
+
+      await orderPollingService.stopRinging();
+      expect(NativeModules.BackgroundPollingModule.stopRinging).toHaveBeenCalled();
+    });
   });
 });

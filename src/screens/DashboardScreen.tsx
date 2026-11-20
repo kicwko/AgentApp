@@ -361,6 +361,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   const handleAutoDecline = useCallback(
     async (order: BackendOrder) => {
       try {
+        orderPollingService.stopRinging();
         const orderKey = order._id || order.orderId;
         console.log('[DashboardScreen] 5-minute timer expired for order:', orderKey);
         await orderService.updateOrderStatus(orderKey, {
@@ -377,6 +378,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
       } catch (err) {
         console.warn('[DashboardScreen] Error auto-declining expired order:', err);
       } finally {
+        orderPollingService.stopRinging();
         setPendingOrder(null);
         setPendingTimeLeft(300);
         await loadDashboardData();
@@ -389,11 +391,16 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   const pollNewOrders = useCallback(async () => {
     try {
       const coords = await getCoordinates();
+      const cleanPhone = (user?.phoneNumber || '').replace(/\D/g, '').slice(-10);
+      const userId = user?.uid || cleanPhone;
+
       const pollRes = await orderService.pollOrders({
         lat: coords.lat,
         lng: coords.lng,
         role: 'agent',
         limit: 20,
+        phone: cleanPhone || undefined,
+        userId: userId || undefined,
       });
 
       if (pollRes && pollRes.success && pollRes.data) {
@@ -420,6 +427,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
             if (remainSec <= 0) {
               await handleAutoDecline(incomingPending);
             } else {
+              orderPollingService.startRinging().catch(() => {});
               setPendingOrder(incomingPending);
               setPendingTimeLeft(remainSec);
             }
@@ -451,6 +459,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         if (remainSec <= 0) {
           await handleAutoDecline(incomingPending);
         } else {
+          orderPollingService.startRinging().catch(() => {});
           setPendingOrder(incomingPending);
           setPendingTimeLeft(remainSec);
         }
@@ -458,6 +467,22 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     });
 
     const unsubscribePoll = orderPollingService.subscribeToPollResponses(() => {
+      loadDashboardData().catch(() => {});
+    });
+
+    const unsubscribeAccepted = orderPollingService.subscribeToAcceptedAction(orderId => {
+      console.log('[DashboardScreen] Order accepted via notification action:', orderId);
+      orderPollingService.stopRinging().catch(() => {});
+      setPendingOrder(null);
+      setPendingTimeLeft(300);
+      loadDashboardData().catch(() => {});
+    });
+
+    const unsubscribeDeclined = orderPollingService.subscribeToDeclinedAction(orderId => {
+      console.log('[DashboardScreen] Order declined via notification action:', orderId);
+      orderPollingService.stopRinging().catch(() => {});
+      setPendingOrder(null);
+      setPendingTimeLeft(300);
       loadDashboardData().catch(() => {});
     });
 
@@ -470,6 +495,9 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
       clearInterval(pollInterval);
       unsubscribePending();
       unsubscribePoll();
+      unsubscribeAccepted();
+      unsubscribeDeclined();
+      orderPollingService.stopRinging().catch(() => {});
     };
   }, [pollNewOrders, pendingOrder, handleAutoDecline, loadDashboardData]);
 
@@ -496,6 +524,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   // Accept Pending Order (within 5 minutes) -> sets status to 'In Transit'
   const handleAcceptPending = async () => {
     if (!pendingOrder) return;
+    orderPollingService.stopRinging().catch(() => {});
     setOrderAccepting(true);
     const orderKey = pendingOrder._id || pendingOrder.orderId;
 
@@ -519,6 +548,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   // Decline Pending Order manually
   const handleDeclinePending = async () => {
     if (!pendingOrder) return;
+    orderPollingService.stopRinging().catch(() => {});
     setOrderDeclining(true);
     const orderKey = pendingOrder._id || pendingOrder.orderId;
 

@@ -7,6 +7,7 @@ const { BackgroundPollingModule } = NativeModules;
 
 export type OrderCallback = (order: BackendOrder) => void;
 export type PollResponseCallback = (data: PollOrdersResponse) => void;
+export type NotificationActionCallback = (orderId: string) => void;
 
 interface PollingConfig {
   phone?: string | null;
@@ -23,6 +24,8 @@ class OrderPollingServiceManager {
 
   private pendingOrderSubscribers: Set<OrderCallback> = new Set();
   private pollResponseSubscribers: Set<PollResponseCallback> = new Set();
+  private acceptedActionSubscribers: Set<NotificationActionCallback> = new Set();
+  private declinedActionSubscribers: Set<NotificationActionCallback> = new Set();
 
   constructor() {
     if (Platform.OS === 'android' && BackgroundPollingModule) {
@@ -62,6 +65,29 @@ class OrderPollingServiceManager {
       } catch (err) {
         console.warn('[OrderPollingService] Failed parsing native poll response:', err);
       }
+    });
+
+    // Listen to notification action triggers (ACCEPT/DECLINE pressed in notification)
+    this.eventEmitter.addListener('onOrderAcceptedFromNotification', (orderId: any) => {
+      const id = String(orderId || '');
+      this.acceptedActionSubscribers.forEach(cb => {
+        try {
+          cb(id);
+        } catch (err) {
+          console.warn('[OrderPollingService] Error in acceptedAction callback:', err);
+        }
+      });
+    });
+
+    this.eventEmitter.addListener('onOrderDeclinedFromNotification', (orderId: any) => {
+      const id = String(orderId || '');
+      this.declinedActionSubscribers.forEach(cb => {
+        try {
+          cb(id);
+        } catch (err) {
+          console.warn('[OrderPollingService] Error in declinedAction callback:', err);
+        }
+      });
     });
   }
 
@@ -130,11 +156,17 @@ class OrderPollingServiceManager {
 
     try {
       const coords = await locationService.getCurrentCoordinates();
+      const cleanPhone = this.currentConfig.phone
+        ? this.currentConfig.phone.replace(/\D/g, '').slice(-10)
+        : undefined;
+
       const res = await orderService.pollOrders({
         lat: coords.lat,
         lng: coords.lng,
         role: 'agent',
         limit: 20,
+        phone: cleanPhone,
+        userId: this.currentConfig.userId || undefined,
       });
 
       if (res && res.success && res.data) {
@@ -195,6 +227,69 @@ class OrderPollingServiceManager {
         console.warn('[OrderPollingService] Error in poll subscriber callback:', err);
       }
     });
+  }
+
+  /**
+   * Subscribe to notification action: user accepted order from notification shade
+   */
+  public subscribeToAcceptedAction(callback: NotificationActionCallback): () => void {
+    this.acceptedActionSubscribers.add(callback);
+    return () => {
+      this.acceptedActionSubscribers.delete(callback);
+    };
+  }
+
+  /**
+   * Subscribe to notification action: user declined order from notification shade
+   */
+  public subscribeToDeclinedAction(callback: NotificationActionCallback): () => void {
+    this.declinedActionSubscribers.add(callback);
+    return () => {
+      this.declinedActionSubscribers.delete(callback);
+    };
+  }
+
+  /**
+   * Start continuous looping ringtone and pulsing vibration for incoming dispatch.
+   */
+  public async startRinging(): Promise<void> {
+    const mod = this.getNativeModule();
+    if (Platform.OS === 'android' && mod?.startRinging) {
+      try {
+        await mod.startRinging();
+      } catch (e: any) {
+        console.log('[OrderPollingService] Notice starting ringtone:', e?.message);
+      }
+    }
+  }
+
+  /**
+   * Stop continuous ringtone and vibration immediately (upon Accept, Decline, or Dismiss).
+   */
+  public async stopRinging(): Promise<void> {
+    const mod = this.getNativeModule();
+    if (Platform.OS === 'android' && mod?.stopRinging) {
+      try {
+        await mod.stopRinging();
+      } catch (e: any) {
+        console.log('[OrderPollingService] Notice stopping ringtone:', e?.message);
+      }
+    }
+  }
+
+  /**
+   * Check whether ringtone is currently playing.
+   */
+  public async isRinging(): Promise<boolean> {
+    const mod = this.getNativeModule();
+    if (Platform.OS === 'android' && mod?.isRinging) {
+      try {
+        return await mod.isRinging();
+      } catch {
+        return false;
+      }
+    }
+    return false;
   }
 
   public getIsRunning(): boolean {

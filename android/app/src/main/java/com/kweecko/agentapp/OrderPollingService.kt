@@ -186,15 +186,20 @@ class OrderPollingService : Service() {
             conn.setRequestProperty("x-admin-email", "admin@kwiqo.com")
             conn.setRequestProperty("x-user-role", "admin")
 
-            agentPhone?.let {
-                val clean = it.replace("\\D".toRegex(), "").takeLast(10)
-                if (clean.isNotBlank()) conn.setRequestProperty("x-user-phone", clean)
+            val cleanPhone = agentPhone?.replace("\\D".toRegex(), "")?.takeLast(10)
+            if (!cleanPhone.isNullOrBlank()) {
+                conn.setRequestProperty("x-user-phone", cleanPhone)
+                conn.setRequestProperty("x-auth-token", "mock-jwt-$cleanPhone")
+                if (authToken.isNullOrBlank()) {
+                    conn.setRequestProperty("Authorization", "Bearer mock-jwt-$cleanPhone")
+                }
             }
-            agentUserId?.let {
-                if (it.isNotBlank()) conn.setRequestProperty("x-user-id", it)
+            if (!agentUserId.isNullOrBlank()) {
+                conn.setRequestProperty("x-user-id", agentUserId)
             }
-            authToken?.let {
-                if (it.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $it")
+            if (!authToken.isNullOrBlank()) {
+                conn.setRequestProperty("Authorization", "Bearer $authToken")
+                conn.setRequestProperty("x-auth-token", authToken)
             }
 
             val statusCode = conn.responseCode
@@ -254,6 +259,9 @@ class OrderPollingService : Service() {
 
                 if (orderId.isNotBlank() && orderId != lastNotifiedOrderId) {
                     lastNotifiedOrderId = orderId
+                    // Start continuous ringing until user accepts or declines!
+                    OrderRingtoneManager.startRinging(applicationContext)
+
                     showNewOrderAlertNotification(orderId, title, price)
                     BackgroundPollingModule.emitOrderEvent("onNewPendingOrder", pendingOrderObj.toString())
                 }
@@ -276,7 +284,42 @@ class OrderPollingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        // ACCEPT Action Intent
+        val acceptIntent = Intent(this, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_ACCEPT
+            putExtra("orderId", orderId)
+        }
+        val acceptPendingIntent = PendingIntent.getBroadcast(
+            this,
+            orderId.hashCode() + 1,
+            acceptIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // DECLINE Action Intent
+        val declineIntent = Intent(this, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_DECLINE
+            putExtra("orderId", orderId)
+        }
+        val declinePendingIntent = PendingIntent.getBroadcast(
+            this,
+            orderId.hashCode() + 2,
+            declineIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // DISMISS Delete Intent (stops ringing if notification dismissed)
+        val dismissIntent = Intent(this, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_DISMISS
+            putExtra("orderId", orderId)
+        }
+        val dismissPendingIntent = PendingIntent.getBroadcast(
+            this,
+            orderId.hashCode() + 3,
+            dismissIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val formattedPrice = if (price > 0) "₹${price.toInt()}" else "Immediate Dispatch"
 
         val alertNotification = NotificationCompat.Builder(this, CHANNEL_ORDERS_ID)
@@ -284,15 +327,19 @@ class OrderPollingService : Service() {
             .setContentText("$taskTitle • $formattedPrice. Tap to accept within 5 mins.")
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("$taskTitle\nValue: $formattedPrice\nTap immediately to accept the order before the 5-minute timer expires.")
+                    .bigText("$taskTitle\nValue: $formattedPrice\nTap ACCEPT or DECLINE. Ringing continues until you accept or decline.")
             )
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setAutoCancel(true)
-            .setSound(soundUri)
-            .setVibrate(longArrayOf(0, 500, 200, 500))
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setAutoCancel(false)
             .setContentIntent(pendingIntent)
+            .setFullScreenIntent(pendingIntent, true)
+            .setDeleteIntent(dismissPendingIntent)
+            .addAction(R.mipmap.ic_launcher, "ACCEPT", acceptPendingIntent)
+            .addAction(R.mipmap.ic_launcher, "DECLINE", declinePendingIntent)
             .build()
 
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

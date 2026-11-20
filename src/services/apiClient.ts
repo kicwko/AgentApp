@@ -58,6 +58,8 @@ export interface ApiResponse<T = any> {
 class ApiClient {
   private baseUrl: string;
   private authToken: string | null = null;
+  private userPhone: string | null = null;
+  private userId: string | null = null;
 
   constructor() {
     this.baseUrl = typeof __DEV__ !== 'undefined' && __DEV__
@@ -71,6 +73,30 @@ class ApiClient {
 
   public getBaseUrl(): string {
     return this.baseUrl;
+  }
+
+  public setUserSession(session: {
+    phone?: string | null;
+    userId?: string | null;
+    token?: string | null;
+  }) {
+    if (session.phone !== undefined) {
+      this.userPhone = session.phone ? session.phone.replace(/\D/g, '').slice(-10) : null;
+    }
+    if (session.userId !== undefined) {
+      this.userId = session.userId || null;
+    }
+    if (session.token !== undefined) {
+      this.authToken = session.token || null;
+    }
+  }
+
+  public getUserPhone(): string | null {
+    return this.userPhone;
+  }
+
+  public getUserId(): string | null {
+    return this.userId;
   }
 
   public setAuthToken(token: string | null) {
@@ -114,8 +140,20 @@ class ApiClient {
       Pragma: 'no-cache',
     };
 
+    if (this.userPhone) {
+      defaultHeaders['x-user-phone'] = this.userPhone;
+    }
+
+    if (this.userId) {
+      defaultHeaders['x-user-id'] = this.userId;
+    }
+
     if (this.authToken) {
       defaultHeaders['Authorization'] = `Bearer ${this.authToken}`;
+      defaultHeaders['x-auth-token'] = this.authToken;
+    } else if (this.userPhone) {
+      defaultHeaders['Authorization'] = `Bearer mock-jwt-${this.userPhone}`;
+      defaultHeaders['x-auth-token'] = `mock-jwt-${this.userPhone}`;
     }
 
     try {

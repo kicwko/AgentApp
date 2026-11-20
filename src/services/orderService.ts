@@ -78,6 +78,8 @@ export interface PollOrdersParams {
   lastOrderId?: string;
   role?: 'agent' | 'customer' | 'any';
   limit?: number;
+  phone?: string;
+  userId?: string;
 }
 
 export interface PollOrdersResponse {
@@ -103,7 +105,28 @@ export const orderService = {
   pollOrders: async (
     params?: PollOrdersParams
   ): Promise<ApiResponse<PollOrdersResponse>> => {
-    return apiClient.get<PollOrdersResponse>(API_CONFIG.endpoints.ordersPoll, params);
+    const cleanPhone = params?.phone
+      ? params.phone.replace(/\D/g, '').slice(-10)
+      : apiClient.getUserPhone() || undefined;
+
+    const customHeaders: Record<string, string> = {};
+    if (cleanPhone) {
+      customHeaders['x-user-phone'] = cleanPhone;
+      customHeaders['x-auth-token'] = `mock-jwt-${cleanPhone}`;
+      if (!apiClient.getAuthToken()) {
+        customHeaders['Authorization'] = `Bearer mock-jwt-${cleanPhone}`;
+      }
+    }
+    const resolvedUserId = params?.userId || apiClient.getUserId();
+    if (resolvedUserId) {
+      customHeaders['x-user-id'] = resolvedUserId;
+    }
+
+    return apiClient.get<PollOrdersResponse>(
+      API_CONFIG.endpoints.ordersPoll,
+      params,
+      { headers: customHeaders }
+    );
   },
 
   // Get single order details

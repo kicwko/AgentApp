@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import apiClient from './apiClient';
 import type { User } from './firebaseAuth';
 import type { AccountStatusData } from '../screens/AccountStatusScreen';
 
@@ -24,8 +25,16 @@ export const sessionService = {
     try {
       if (user) {
         await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+        apiClient.setUserSession({
+          phone: user.phoneNumber || null,
+          userId: user.uid || null,
+        });
       } else {
         await AsyncStorage.removeItem(STORAGE_KEYS.USER);
+        apiClient.setUserSession({
+          phone: null,
+          userId: null,
+        });
       }
     } catch (e) {
       console.warn('[sessionService] Failed to save user session:', e);
@@ -50,8 +59,10 @@ export const sessionService = {
     try {
       if (token) {
         await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
+        apiClient.setAuthToken(token);
       } else {
         await AsyncStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+        apiClient.setAuthToken(null);
       }
     } catch (e) {
       console.warn('[sessionService] Failed to save token:', e);
@@ -69,6 +80,16 @@ export const sessionService = {
 
       const user: User | null = userJson ? JSON.parse(userJson) : null;
       const accountStatus: AccountStatusData | null = statusJson ? JSON.parse(statusJson) : null;
+
+      if (user) {
+        apiClient.setUserSession({
+          phone: user.phoneNumber || null,
+          userId: user.uid || null,
+          token: token || null,
+        });
+      } else if (token) {
+        apiClient.setAuthToken(token);
+      }
 
       return {
         user,
@@ -89,6 +110,11 @@ export const sessionService = {
         AsyncStorage.removeItem(STORAGE_KEYS.ACCOUNT_STATUS),
         AsyncStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN),
       ]);
+      apiClient.setUserSession({
+        phone: null,
+        userId: null,
+        token: null,
+      });
     } catch (e) {
       console.warn('[sessionService] Failed to clear session:', e);
     }
