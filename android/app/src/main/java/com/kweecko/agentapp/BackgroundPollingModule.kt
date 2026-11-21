@@ -71,7 +71,11 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
                 if (!baseUrl.isNullOrBlank()) putExtra("baseUrl", baseUrl)
             }
 
-            reactContext.startService(intent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                reactContext.startForegroundService(intent)
+            } else {
+                reactContext.startService(intent)
+            }
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("START_SERVICE_ERROR", e.message, e)

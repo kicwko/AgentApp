@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Platform, StyleSheet, ToastAndroid, View } from 'react-native';
+import { PermissionsAndroid, Platform, StyleSheet, ToastAndroid, View } from 'react-native';
 import { AppFooter, type TabName } from '../components/AppFooter';
 import { AppHeader } from '../components/AppHeader';
 import type { User } from '../services/firebaseAuth';
 import { orderPollingService } from '../services/orderPollingService';
+import apiClient from '../services/apiClient';
+import { API_CONFIG } from '../config/api';
 import { userService, type BackendUser } from '../services/userService';
 import { colors } from '../theme/colors';
 import { DashboardScreen } from './DashboardScreen';
@@ -51,14 +53,40 @@ export function HomeScreen({ user, onSignOut }: Props) {
 
   // Keep background polling service active while On Duty
   useEffect(() => {
-    const cleanPhone = (user?.phoneNumber || '').replace(/\D/g, '').slice(-10);
-    const userId = dbUser?._id || dbUser?.agentId || user?.uid;
+    const rawPhone =
+      user?.phoneNumber ||
+      dbUser?.phone ||
+      (dbUser as any)?.mobile ||
+      apiClient.getUserPhone() ||
+      '';
+    const cleanPhone = rawPhone.replace(/\D/g, '').slice(-10);
+    const userId = dbUser?._id || dbUser?.agentId || user?.uid || cleanPhone;
 
-    if (isOnDuty) {
+    if (isOnDuty && (cleanPhone || userId)) {
+      if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
+        PermissionsAndroid.check('android.permission.POST_NOTIFICATIONS' as any)
+          .then(granted => {
+            if (!granted) {
+              PermissionsAndroid.request(
+                'android.permission.POST_NOTIFICATIONS' as any,
+                {
+                  title: 'Kweecko Dispatch Alerts',
+                  message:
+                    'Allow notifications so you are instantly alerted when orders are assigned in the background.',
+                  buttonPositive: 'Allow',
+                }
+              ).catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
+
       orderPollingService
         .start({
           phone: cleanPhone,
-          userId: userId || cleanPhone,
+          userId: userId,
+          token: apiClient.getAuthToken() || `mock-jwt-${cleanPhone}`,
+          baseUrl: API_CONFIG.baseUrl,
         })
         .catch(err => {
           console.log('[HomeScreen] Notice starting polling service:', err);

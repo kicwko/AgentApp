@@ -38,7 +38,7 @@ class OrderPollingService : Service() {
         private const val ORDER_ALERT_NOTIFICATION_ID = 1002
 
         const val CHANNEL_DUTY_ID = "kweecko_duty_channel"
-        const val CHANNEL_ORDERS_ID = "kweecko_order_alerts_v5"
+        const val CHANNEL_ORDERS_ID = "kweecko_order_alerts_v6"
 
         private const val DEFAULT_BASE_URL = "https://kweecko.com/api"
         private const val POLL_INTERVAL_SECONDS = 15L
@@ -60,8 +60,6 @@ class OrderPollingService : Service() {
     private var agentUserId: String? = null
     private var authToken: String? = null
     private var apiBaseUrl: String = DEFAULT_BASE_URL
-
-    private var lastNotifiedOrderId: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -113,20 +111,54 @@ class OrderPollingService : Service() {
             }
         }
 
-        // Cancel and delete any ongoing background polling status notification
-        // so the user will never see a polling notification in the status bar/drawer
-        try {
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            manager?.cancel(ONGOING_NOTIFICATION_ID)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                manager?.deleteNotificationChannel(CHANNEL_DUTY_ID)
-            }
-        } catch (_: Exception) {}
+        // Satisfy Android Foreground Service requirement with a completely silent, minimal notification
+        val dutyNotification = createDutyNotification()
+        startForeground(ONGOING_NOTIFICATION_ID, dutyNotification)
 
         isServiceRunning = true
         startPolling()
 
         return START_STICKY
+    }
+
+    private fun createDutyNotification(): Notification {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val dutyChannel = NotificationChannel(
+                CHANNEL_DUTY_ID,
+                "Duty Status",
+                NotificationManager.IMPORTANCE_MIN
+            ).apply {
+                description = "Silent background duty monitoring"
+                setShowBadge(false)
+                enableLights(false)
+                enableVibration(false)
+                setSound(null, null)
+                lockscreenVisibility = Notification.VISIBILITY_SECRET
+            }
+            manager.createNotificationChannel(dutyChannel)
+        }
+
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            100,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_DUTY_ID)
+            .setContentTitle("Kweecko Partner Online")
+            .setContentText("Monitoring live dispatch requests")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setSilent(true)
+            .setShowWhen(false)
+            .setOngoing(true)
+            .setContentIntent(pendingIntent)
+            .build()
     }
 
     private fun createNotificationChannels() {
@@ -139,6 +171,7 @@ class OrderPollingService : Service() {
                 manager.deleteNotificationChannel("kweecko_orders_channel")
                 manager.deleteNotificationChannel("kweecko_order_persistent_alarm_v3")
                 manager.deleteNotificationChannel("kweecko_order_alerts_v4")
+                manager.deleteNotificationChannel("kweecko_order_alerts_v5")
             } catch (_: Exception) {}
 
             // High-Priority Order Alerts Channel (v5)
@@ -333,7 +366,14 @@ class OrderPollingService : Service() {
                     val orderJson = pendingOrderObj.toString()
                     BackgroundPollingModule.pendingOrderJson = orderJson
 
-                    if (orderId != lastNotifiedOrderId) {
+                    val activeAlertVisible = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                        manager?.activeNotifications?.any { it.id == ORDER_ALERT_NOTIFICATION_ID } ?: false
+                    } else {
+                        false
+                    }
+
+                    if (orderId != lastNotifiedOrderId || !activeAlertVisible) {
                         lastNotifiedOrderId = orderId
 
                         // 1. Start continuous ringing persistent alarm
@@ -362,6 +402,8 @@ class OrderPollingService : Service() {
     }
 
     private fun showNewOrderAlertNotification(orderId: String, taskTitle: String, price: Double, orderJson: String) {
+        createNotificationChannels() // Always ensure channel is active before notifying
+
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("orderId", orderId)
@@ -416,7 +458,7 @@ class OrderPollingService : Service() {
 
         // Order Alert Notification:
         // - autoCancel(true) & ongoing(false): Cleared immediately when user clicks on it or swipes it away.
-        // - PRIORITY_MAX & CATEGORY_CALL: Guarantees heads-up banner display over apps.
+        // - PRIORITY_MAX & CATEGORY_CALL & fullScreenIntent: Guarantees heads-up banner display over apps.
         // - setSound(soundUri): Plays custom dispatch audio immediately with push alert.
         val alertNotification = NotificationCompat.Builder(this, CHANNEL_ORDERS_ID)
             .setContentTitle("🔔 New Service Order Assigned!")
@@ -435,6 +477,7 @@ class OrderPollingService : Service() {
             .setVibrate(longArrayOf(0, 1000, 500, 1000, 500))
             .setContentIntent(pendingIntent)
             .setDeleteIntent(dismissPendingIntent)
+            .setFullScreenIntent(pendingIntent, true)
             .addAction(R.mipmap.ic_launcher, "ACCEPT", acceptPendingIntent)
             .addAction(R.mipmap.ic_launcher, "DECLINE", declinePendingIntent)
             .build()
