@@ -242,6 +242,7 @@ export function DashboardScreen({
   const [pendingOrder, setPendingOrder] = useState<BackendOrder | null>(null);
   const pendingOrderRef = useRef<BackendOrder | null>(null);
   pendingOrderRef.current = pendingOrder;
+  const declinedOrderIdsRef = useRef<Set<string>>(new Set());
 
   const [pendingTimeLeft, setPendingTimeLeft] = useState<number>(300); // 5 minutes = 300 seconds
   const [orderAccepting, setOrderAccepting] = useState(false);
@@ -351,9 +352,14 @@ export function DashboardScreen({
         cachedInProgressOrders = activeInProgress;
         setInProgressOrders(activeInProgress);
 
-        // Check for any assigned pending orders
-        const foundPending = finalOrders.find(o => o.status === 'Pending');
-        if (foundPending && !pendingOrder) {
+        // Check for any assigned pending orders (excluding declined ones)
+        const foundPending = finalOrders.find(
+          o =>
+            o.status === 'Pending' &&
+            !declinedOrderIdsRef.current.has(o._id || '') &&
+            !declinedOrderIdsRef.current.has(o.orderId || '')
+        );
+        if (foundPending && !pendingOrderRef.current) {
           const createdMs = foundPending.createdAt
             ? new Date(foundPending.createdAt).getTime()
             : Date.now();
@@ -412,10 +418,20 @@ export function DashboardScreen({
   // Auto-decline handler when 5 minutes expire
   const handleAutoDecline = useCallback(
     async (order: BackendOrder) => {
-      const orderKey = order._id || order.orderId;
+      const orderKey = order._id || order.orderId || '';
+      const mongoId = order._id || '';
+      const humanOrderId = order.orderId || '';
+
+      if (orderKey) declinedOrderIdsRef.current.add(orderKey);
+      if (mongoId) declinedOrderIdsRef.current.add(mongoId);
+      if (humanOrderId) declinedOrderIdsRef.current.add(humanOrderId);
+
+      orderPollingService.markOrderDeclined(orderKey, humanOrderId, mongoId);
       orderPollingService.stopRinging().catch(() => {});
       orderPollingService.clearLatestPendingOrder().catch(() => {});
+      orderPollingService.setAlertActive(false);
       setPendingOrder(null);
+      pendingOrderRef.current = null;
       setPendingTimeLeft(0);
 
       try {
@@ -423,12 +439,16 @@ export function DashboardScreen({
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Auto-decline timeout')), 10000)
         );
+        const declinePayload = {
+          status: 'Canceled',
+          reason: 'Expired - not accepted within 5 minutes',
+          canceledBy: 'Agent',
+          cancellationReason: 'Expired - not accepted within 5 minutes',
+          markedBy: 'Agent',
+          role: 'Agent',
+        };
         await Promise.race([
-          orderService.updateOrderStatus(orderKey, {
-            status: 'Canceled',
-            reason: 'Expired - not accepted within 5 minutes',
-            canceledBy: 'Agent',
-          }),
+          orderService.updateOrderStatus(orderKey, declinePayload),
           timeoutPromise,
         ]);
         if (Platform.OS === 'android') {
@@ -444,6 +464,7 @@ export function DashboardScreen({
         orderPollingService.clearLatestPendingOrder().catch(() => {});
         orderPollingService.setAlertActive(false);
         setPendingOrder(null);
+        pendingOrderRef.current = null;
         setPendingTimeLeft(0);
         await loadDashboardData().catch(() => {});
       }
@@ -480,7 +501,12 @@ export function DashboardScreen({
           ...(Array.isArray(pollData.data) ? pollData.data : []),
         ];
 
-        const incomingPending = candidateOrders.find(o => o.status === 'Pending');
+        const incomingPending = candidateOrders.find(
+          o =>
+            o.status === 'Pending' &&
+            !declinedOrderIdsRef.current.has(o._id || '') &&
+            !declinedOrderIdsRef.current.has(o.orderId || '')
+        );
 
         if (incomingPending) {
           const incomingKey = incomingPending._id || incomingPending.orderId;
@@ -519,7 +545,11 @@ export function DashboardScreen({
   useEffect(() => {
     // Check if an order was delivered via push notification click before listeners mounted
     orderPollingService.getLatestPendingOrder().then(async latestPending => {
-      if (latestPending) {
+      if (
+        latestPending &&
+        !declinedOrderIdsRef.current.has(latestPending._id || '') &&
+        !declinedOrderIdsRef.current.has(latestPending.orderId || '')
+      ) {
         const createdMs = latestPending.createdAt
           ? new Date(latestPending.createdAt).getTime()
           : Date.now();
@@ -542,6 +572,14 @@ export function DashboardScreen({
     const unsubscribePending = orderPollingService.subscribeToPendingOrders(async incomingPending => {
       const incomingKey = incomingPending._id || incomingPending.orderId;
       const currentKey = pendingOrderRef.current ? pendingOrderRef.current._id || pendingOrderRef.current.orderId : null;
+
+      if (
+        declinedOrderIdsRef.current.has(incomingKey || '') ||
+        (incomingPending._id && declinedOrderIdsRef.current.has(incomingPending._id)) ||
+        (incomingPending.orderId && declinedOrderIdsRef.current.has(incomingPending.orderId))
+      ) {
+        return;
+      }
 
       if (incomingKey !== currentKey) {
         const createdMs = incomingPending.createdAt
@@ -575,16 +613,22 @@ export function DashboardScreen({
       orderPollingService.clearLatestPendingOrder().catch(() => {});
       orderPollingService.setAlertActive(false);
       setPendingOrder(null);
+      pendingOrderRef.current = null;
       setPendingTimeLeft(300);
       loadDashboardData().catch(() => {});
     });
 
     const unsubscribeDeclined = orderPollingService.subscribeToDeclinedAction(orderId => {
       console.log('[DashboardScreen] Order declined via notification action:', orderId);
+      if (orderId) {
+        declinedOrderIdsRef.current.add(orderId);
+        orderPollingService.markOrderDeclined(orderId);
+      }
       orderPollingService.stopRinging().catch(() => {});
       orderPollingService.clearLatestPendingOrder().catch(() => {});
       orderPollingService.setAlertActive(false);
       setPendingOrder(null);
+      pendingOrderRef.current = null;
       setPendingTimeLeft(300);
       loadDashboardData().catch(() => {});
     });
@@ -659,16 +703,38 @@ export function DashboardScreen({
   };
 
   // Decline Pending Order manually
-  const handleDeclinePending = async () => {
-    if (!pendingOrder) return;
-    const orderToDecline = pendingOrder;
-    const orderKey = orderToDecline._id || orderToDecline.orderId;
+  const handleDeclinePending = async (declinedOrder?: BackendOrder | any) => {
+    const isOrderObj =
+      declinedOrder &&
+      typeof declinedOrder === 'object' &&
+      ('_id' in declinedOrder || 'orderId' in declinedOrder);
+    const orderToDecline =
+      (isOrderObj ? (declinedOrder as BackendOrder) : null) ||
+      pendingOrderRef.current ||
+      pendingOrder;
+    if (!orderToDecline) {
+      console.warn('[DashboardScreen] Decline tapped but no pending order found in state or param');
+      return;
+    }
+    const orderKey = orderToDecline._id || orderToDecline.orderId || '';
+    const mongoId = orderToDecline._id || '';
+    const humanOrderId = orderToDecline.orderId || '';
 
-    // Immediately stop audio & dismiss modal optimistically so UI never freezes
+    console.log('[DashboardScreen] Declining order:', { orderKey, mongoId, humanOrderId });
+
+    // 1. Immediately record as declined in local ref & notify polling service to ignore forever
+    if (orderKey) declinedOrderIdsRef.current.add(orderKey);
+    if (mongoId) declinedOrderIdsRef.current.add(mongoId);
+    if (humanOrderId) declinedOrderIdsRef.current.add(humanOrderId);
+
+    orderPollingService.markOrderDeclined(orderKey, humanOrderId, mongoId);
+
+    // 2. Immediately stop audio & dismiss modal optimistically so UI never freezes
     orderPollingService.stopRinging().catch(() => {});
     orderPollingService.clearLatestPendingOrder().catch(() => {});
     orderPollingService.setAlertActive(false);
     setPendingOrder(null);
+    pendingOrderRef.current = null;
     setPendingTimeLeft(0);
     setOrderDeclining(false);
 
@@ -676,18 +742,58 @@ export function DashboardScreen({
       ToastAndroid.show('Order declined.', ToastAndroid.SHORT);
     }
 
+    const declinePayload = {
+      status: 'Canceled',
+      reason: 'Declined by agent',
+      canceledBy: 'Agent',
+      cancellationReason: 'Declined by agent',
+      markedBy: 'Agent',
+      role: 'Agent',
+    };
+
+    // 3. Trigger native background update thread (failsafe)
+    if (orderKey) {
+      orderPollingService.updateOrderStatusInBackground(orderKey, 'Canceled', 'Declined by agent');
+    }
+    if (humanOrderId && humanOrderId !== orderKey) {
+      orderPollingService.updateOrderStatusInBackground(humanOrderId, 'Canceled', 'Declined by agent');
+    }
+
+    // 4. Send API cancel requests with retry and fallback over primary and alternate keys
     try {
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Decline order timeout')), 10000)
       );
-      await Promise.race([
-        orderService.updateOrderStatus(orderKey, {
-          status: 'Canceled',
-          reason: 'Declined by agent',
-          canceledBy: 'Agent',
-        }),
-        timeoutPromise,
-      ]);
+
+      const updateTask = async () => {
+        let success = false;
+        if (orderKey) {
+          try {
+            const res = await orderService.updateOrderStatus(orderKey, declinePayload);
+            if (res && (res.success || res.status === 'Canceled')) success = true;
+          } catch {}
+        }
+        if (!success && humanOrderId && humanOrderId !== orderKey) {
+          try {
+            const res = await orderService.updateOrderStatus(humanOrderId, declinePayload);
+            if (res && (res.success || res.status === 'Canceled')) success = true;
+          } catch {}
+        }
+        if (!success && mongoId && mongoId !== orderKey) {
+          try {
+            const res = await orderService.updateOrderStatus(mongoId, declinePayload);
+            if (res && (res.success || res.status === 'Canceled')) success = true;
+          } catch {}
+        }
+        if (!success) {
+          const directTarget = orderKey || humanOrderId || mongoId;
+          if (directTarget) {
+            await apiClient.put(`/orders/${directTarget}/status`, declinePayload).catch(() => {});
+          }
+        }
+      };
+
+      await Promise.race([updateTask(), timeoutPromise]);
     } catch (err: any) {
       console.warn('[DashboardScreen] Error declining order:', err?.message);
     } finally {
@@ -888,7 +994,7 @@ export function DashboardScreen({
           <View style={styles.actionsRow}>
             <TouchableOpacity
               style={styles.declineButton}
-              onPress={handleDeclinePending}
+              onPress={() => handleDeclinePending()}
               activeOpacity={0.8}
               disabled={isPendingExpired || orderDeclining || orderAccepting}>
               {orderDeclining ? (

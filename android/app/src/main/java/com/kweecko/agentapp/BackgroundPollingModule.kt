@@ -142,6 +142,30 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     }
 
     @ReactMethod
+    fun markOrderDeclined(orderId: String, promise: Promise) {
+        try {
+            if (orderId.isNotBlank()) {
+                OrderPollingService.markOrderDeclined(orderId)
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
+    fun updateOrderStatusInBackground(orderId: String, status: String, reason: String?, promise: Promise) {
+        try {
+            if (orderId.isNotBlank()) {
+                NotificationActionReceiver.updateOrderStatusInBackground(reactContext, orderId, status, reason)
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
     fun stopRinging(promise: Promise) {
         try {
             OrderRingtoneManager.stopRinging()

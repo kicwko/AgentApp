@@ -24,6 +24,7 @@ class OrderPollingServiceManager {
   private eventEmitter: NativeEventEmitter | null = null;
   private currentConfig: PollingConfig = {};
   private cachedPendingOrder: BackendOrder | null = null;
+  private declinedOrderIds: Set<string> = new Set();
 
   private pendingOrderSubscribers: Set<OrderCallback> = new Set();
   private pollResponseSubscribers: Set<PollResponseCallback> = new Set();
@@ -53,6 +54,11 @@ class OrderPollingServiceManager {
       try {
         const order: BackendOrder =
           typeof payload === 'string' ? JSON.parse(payload) : payload;
+        const oId = order._id || '';
+        const oCode = order.orderId || '';
+        if (this.declinedOrderIds.has(oId) || this.declinedOrderIds.has(oCode)) {
+          return;
+        }
         this.cachedPendingOrder = order;
         this.setAlertActive(true);
         this.notifyPendingOrderSubscribers(order);
@@ -86,6 +92,7 @@ class OrderPollingServiceManager {
 
     this.eventEmitter.addListener('onOrderDeclinedFromNotification', (orderId: any) => {
       const id = String(orderId || '');
+      this.markOrderDeclined(id);
       this.declinedActionSubscribers.forEach(cb => {
         try {
           cb(id);
@@ -186,7 +193,12 @@ class OrderPollingServiceManager {
           ...(Array.isArray(pollData.data) ? pollData.data : []),
         ];
 
-        const pending = candidateOrders.find(o => o.status === 'Pending');
+        const pending = candidateOrders.find(
+          o =>
+            o.status === 'Pending' &&
+            !this.declinedOrderIds.has(o._id || '') &&
+            !this.declinedOrderIds.has(o.orderId || '')
+        );
         if (pending) {
           this.setAlertActive(true);
           this.notifyPendingOrderSubscribers(pending);
@@ -255,6 +267,38 @@ class OrderPollingServiceManager {
     return () => {
       this.declinedActionSubscribers.delete(callback);
     };
+  }
+
+  /**
+   * Mark order as declined across both JS state and native background service.
+   */
+  public markOrderDeclined(orderKey?: string, humanOrderId?: string, mongoId?: string): void {
+    if (orderKey) this.declinedOrderIds.add(orderKey);
+    if (humanOrderId) this.declinedOrderIds.add(humanOrderId);
+    if (mongoId) this.declinedOrderIds.add(mongoId);
+
+    const mod = this.getNativeModule();
+    if (Platform.OS === 'android' && mod?.markOrderDeclined) {
+      if (orderKey) mod.markOrderDeclined(orderKey).catch(() => {});
+      if (humanOrderId && humanOrderId !== orderKey) mod.markOrderDeclined(humanOrderId).catch(() => {});
+      if (mongoId && mongoId !== orderKey) mod.markOrderDeclined(mongoId).catch(() => {});
+    }
+  }
+
+  public isOrderDeclined(orderId?: string | null): boolean {
+    if (!orderId) return false;
+    return this.declinedOrderIds.has(orderId);
+  }
+
+  public updateOrderStatusInBackground(
+    orderId: string,
+    status: string,
+    reason?: string
+  ): void {
+    const mod = this.getNativeModule();
+    if (Platform.OS === 'android' && mod?.updateOrderStatusInBackground) {
+      mod.updateOrderStatusInBackground(orderId, status, reason || null).catch(() => {});
+    }
   }
 
   /**

@@ -26,8 +26,8 @@ interface IncomingDispatchModalProps {
   visible: boolean;
   order: BackendOrder | null;
   timeLeftSeconds: number;
-  onAccept: () => Promise<void> | void;
-  onDecline: () => Promise<void> | void;
+  onAccept: (order?: BackendOrder | null) => Promise<void> | void;
+  onDecline: (order?: BackendOrder | null) => Promise<void> | void;
   isAccepting?: boolean;
   isDeclining?: boolean;
 }
@@ -159,16 +159,28 @@ export function IncomingDispatchModal({
 
   const handlePressAccept = async () => {
     try {
-      Vibration.vibrate([0, 100, 60, 100]);
-    } catch {}
-    await onAccept();
+      try {
+        Vibration.vibrate([0, 100, 60, 100]);
+      } catch {}
+      if (onAccept) {
+        await onAccept(order);
+      }
+    } catch (err) {
+      console.warn('[IncomingDispatchModal] Error in onAccept:', err);
+    }
   };
 
   const handlePressDecline = async () => {
     try {
-      Vibration.vibrate(50);
-    } catch {}
-    await onDecline();
+      try {
+        Vibration.vibrate(50);
+      } catch {}
+      if (onDecline) {
+        await onDecline(order);
+      }
+    } catch (err) {
+      console.warn('[IncomingDispatchModal] Error in onDecline:', err);
+    }
   };
 
   // Interpolations for Ripple 1 & 2
@@ -196,7 +208,7 @@ export function IncomingDispatchModal({
       animationType="slide"
       transparent={false}
       statusBarTranslucent
-      onRequestClose={onDecline}>
+      onRequestClose={() => handlePressDecline()}>
       <StatusBar barStyle="dark-content" />
       <LinearGradient
         colors={['#f8fafc', '#f1f5f9', '#e8edf5']}
@@ -308,6 +320,7 @@ export function IncomingDispatchModal({
               <TouchableOpacity
                 onPress={handlePressDecline}
                 activeOpacity={0.85}
+                hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
                 disabled={isDeclining || isAccepting}
                 style={styles.declineCircle}>
                 {isDeclining ? (
@@ -323,6 +336,7 @@ export function IncomingDispatchModal({
             <View style={styles.callBtnColumn}>
               <View style={styles.acceptButtonWrapper}>
                 <Animated.View
+                  pointerEvents="none"
                   style={[
                     styles.acceptPulseRing,
                     {
@@ -333,6 +347,7 @@ export function IncomingDispatchModal({
                 <TouchableOpacity
                   onPress={handlePressAccept}
                   activeOpacity={0.85}
+                  hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
                   disabled={isAccepting || isDeclining}
                   style={styles.acceptCircle}>
                   {isAccepting ? (

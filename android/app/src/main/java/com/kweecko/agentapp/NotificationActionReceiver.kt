@@ -122,6 +122,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
             ACTION_DECLINE -> {
                 Log.d(TAG, "User declined order via notification: $orderId")
+                OrderPollingService.markOrderDeclined(orderId)
                 BackgroundPollingModule.emitOrderEvent("onOrderDeclinedFromNotification", orderId)
 
                 // Update order status to 'Canceled' in background thread

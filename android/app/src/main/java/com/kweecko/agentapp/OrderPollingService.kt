@@ -58,7 +58,21 @@ class OrderPollingService : Service() {
         @Volatile
         var lastNotifiedOrderId: String? = null
 
+        val declinedOrderIds: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
         private var instance: OrderPollingService? = null
+
+        fun markOrderDeclined(orderId: String) {
+            val cleanId = orderId.trim()
+            if (cleanId.isNotBlank()) {
+                declinedOrderIds.add(cleanId)
+            }
+            if (lastNotifiedOrderId == cleanId) {
+                lastNotifiedOrderId = null
+                isOrderAlertActive = false
+                instance?.cancelAlertAutoExpiry()
+            }
+        }
 
         fun resetLastNotifiedOrder() {
             lastNotifiedOrderId = null
@@ -463,6 +477,17 @@ class OrderPollingService : Service() {
             // If a pending order is present and hasn't been notified yet, notify user!
             if (pendingOrderObj != null) {
                 val orderId = pendingOrderObj.optString("_id", pendingOrderObj.optString("orderId", ""))
+                val humanOrderId = pendingOrderObj.optString("orderId", "")
+                val mongoId = pendingOrderObj.optString("_id", "")
+
+                // If this order has already been declined by the partner, ignore it
+                if (declinedOrderIds.contains(orderId) ||
+                    (humanOrderId.isNotBlank() && declinedOrderIds.contains(humanOrderId)) ||
+                    (mongoId.isNotBlank() && declinedOrderIds.contains(mongoId))) {
+                    Log.d(TAG, "Pending order $orderId ($humanOrderId) is in declined list. Skipping alert.")
+                    return
+                }
+
                 val title = pendingOrderObj.optString("taskTitle", "New Service Order")
                 val price = pendingOrderObj.optDouble("totalPrice", 0.0)
 

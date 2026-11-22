@@ -174,15 +174,27 @@ export const orderService = {
   // Update order status: 'In Transit' | 'In Progress' | 'Done' | 'Canceled'
   updateOrderStatus: async (
     orderId: string,
-    payload: { status: string; reason?: string; canceledBy?: string }
+    payload: {
+      status: string;
+      reason?: string;
+      canceledBy?: string;
+      cancellationReason?: string;
+      markedBy?: string;
+      role?: string;
+    }
   ): Promise<ApiResponse<BackendOrder>> => {
+    const cleanId = encodeURIComponent(String(orderId || '').trim());
+    if (!cleanId) {
+      return { success: false, message: 'Invalid orderId' };
+    }
+
     // 1. Primary: /api/orders/:id/status
     try {
       const res = await apiClient.put<BackendOrder>(
-        `${API_CONFIG.endpoints.orders}/${orderId}/status`,
+        `${API_CONFIG.endpoints.orders}/${cleanId}/status`,
         payload
       );
-      if (res && res.success) {
+      if (res && (res.success || res.status === payload.status)) {
         return res;
       }
     } catch {
@@ -192,10 +204,10 @@ export const orderService = {
     // 2. Secondary: /api/orders/:id
     try {
       const res = await apiClient.put<BackendOrder>(
-        `${API_CONFIG.endpoints.orders}/${orderId}`,
+        `${API_CONFIG.endpoints.orders}/${cleanId}`,
         payload
       );
-      if (res && res.success) {
+      if (res && (res.success || res.status === payload.status)) {
         return res;
       }
     } catch {
@@ -204,7 +216,7 @@ export const orderService = {
 
     // 3. Tertiary: /api/orders/update/:id
     return apiClient.put<BackendOrder>(
-      `${API_CONFIG.endpoints.orders}/update/${orderId}`,
+      `${API_CONFIG.endpoints.orders}/update/${cleanId}`,
       payload
     );
   },
