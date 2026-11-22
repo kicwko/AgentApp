@@ -147,15 +147,14 @@ export const userService = {
       params.email ||
       (cleanPhone ? `${cleanPhone}@kweecko.partner` : undefined);
 
-    // Query syncFirebaseUser by email / uid / phone (read-only live DB retrieval)
+    // Query syncFirebaseUser by email / uid / phone (read-only live DB retrieval - do NOT pass userType so backend does not create user)
     try {
       const syncRes = await apiClient.post<BackendUser>(
         API_CONFIG.endpoints.syncFirebaseUser,
         {
           email: userEmail,
-          uid: params.uid || (cleanPhone ? `agent_${cleanPhone}` : 'agent_uid'),
+          uid: params.uid || (cleanPhone ? `agent_${cleanPhone}` : undefined),
           phone: cleanPhone || undefined,
-          userType: 'agent',
         }
       );
 
@@ -176,12 +175,8 @@ export const userService = {
       }
     }
 
-    return apiClient.post<BackendUser>(API_CONFIG.endpoints.registerUser, {
-      phone: cleanPhone || undefined,
-      email: userEmail,
-      firebaseUid: params.uid || undefined,
-      fullName: 'Agent Partner',
-    });
+    // Do NOT auto-register unregistered users! Throw error so caller knows user is not in database
+    throw new Error('Partner account not found in database');
   },
 
   // Save or update partner profile directly in backend database (real-time sync)
@@ -243,7 +238,7 @@ export const userService = {
   }): Promise<ApiResponse<BackendUser>> => {
     return apiClient.post<BackendUser>(API_CONFIG.endpoints.syncFirebaseUser, {
       ...payload,
-      userType: payload.userType || 'agent',
+      userType: payload.userType,
     });
   },
 
@@ -333,19 +328,40 @@ export const userService = {
     return apiClient.post(API_CONFIG.endpoints.loginUser, payload);
   },
 
-  // Check if partner already exists
+  // Check if partner already exists by email, phone, Aadhaar, or DOB
   checkUserExists: async (params: {
+    email?: string | null;
     mobileNumber?: string;
     phone?: string;
     aadhaarNumber?: string;
     aadhaar?: string;
     dob?: string;
-  }): Promise<ApiResponse<any>> => {
-    return apiClient.post(API_CONFIG.endpoints.checkUserExists, {
-      mobileNumber: params.mobileNumber || params.phone,
-      aadhaarNumber: params.aadhaarNumber || params.aadhaar,
-      dob: params.dob,
-    });
+  }): Promise<{
+    success?: boolean;
+    exists?: boolean;
+    message?: string;
+    user?: BackendUser;
+    data?: BackendUser;
+    details?: any;
+    [key: string]: any;
+  }> => {
+    const payload: Record<string, any> = {};
+    if (params.email) {
+      payload.email = params.email.trim().toLowerCase();
+    }
+    const phone = params.mobileNumber || params.phone;
+    if (phone) {
+      payload.mobileNumber = phone;
+      payload.phone = phone;
+    }
+    const aadhaar = params.aadhaarNumber || params.aadhaar;
+    if (aadhaar) {
+      payload.aadhaarNumber = aadhaar;
+    }
+    if (params.dob) {
+      payload.dob = params.dob;
+    }
+    return apiClient.post(API_CONFIG.endpoints.checkUserExists, payload);
   },
 
   // Get all registered users

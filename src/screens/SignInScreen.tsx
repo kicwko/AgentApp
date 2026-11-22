@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,10 +17,12 @@ import {
   confirmPhoneOtp,
   sendPhoneOtp,
   signInWithGoogleIdToken,
+  signOutUser,
   type ConfirmationResult,
 } from '../services/firebaseAuth';
 import { signInWithGoogle } from '../services/googleAuth';
 import { userService } from '../services/userService';
+import { sessionService } from '../services/sessionService';
 import type { AccountStatusData } from './AccountStatusScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -27,13 +30,22 @@ import { typography } from '../theme/typography';
 type Props = {
   onBack: () => void;
   onGoToRegister?: () => void;
+  onGoToSignIn?: () => void;
   onAccountStatus?: (data: AccountStatusData) => void;
   onLoginSuccess?: (user: any) => void;
+  isRegister?: boolean;
 };
 
 type PhoneStep = 'phone' | 'otp';
 
-export function SignInScreen({ onBack, onAccountStatus, onLoginSuccess }: Props) {
+export function SignInScreen({
+  onBack,
+  onGoToRegister,
+  onGoToSignIn,
+  onAccountStatus,
+  onLoginSuccess,
+  isRegister = false,
+}: Props) {
   const [countryCode, setCountryCode] = useState('+91');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otpCode, setOtpCode] = useState('');
@@ -290,11 +302,56 @@ export function SignInScreen({ onBack, onAccountStatus, onLoginSuccess }: Props)
       }
       const userCred = await signInWithGoogleIdToken(outcome.idToken);
       const googleUser = userCred.user;
+      const cleanEmail = (googleUser.email || '').trim().toLowerCase();
 
-      // Sync with backend & check account status
+      // 1. Verify whether this user is registered in the database with that email
+      let isRegisteredInDb = false;
+      try {
+        if (cleanEmail) {
+          const checkRes = await userService.checkUserExists({ email: cleanEmail });
+          if (checkRes && checkRes.exists) {
+            isRegisteredInDb = true;
+          }
+        }
+      } catch (checkErr) {
+        console.warn('[SignIn] Error checking email in database:', checkErr);
+      }
+
+      if (!isRegisteredInDb) {
+        // User is NOT in the database with that Gmail!
+        // Do NOT allow him to login and do NOT auto-register him!
+        console.log('[SignIn] Google user not found in database:', cleanEmail);
+        try {
+          await signOutUser();
+          await sessionService.clearSession();
+        } catch {}
+
+        const notFoundMsg = `No registered partner account found with email "${cleanEmail}". Please register first.`;
+        setError(notFoundMsg);
+        Alert.alert(
+          'Account Not Found',
+          `No registered partner account was found associated with "${cleanEmail}".\n\nPlease register to create your agent partner account first.`,
+          [
+            {
+              text: 'Sign Up / Register',
+              onPress: () => {
+                if (onGoToRegister) {
+                  onGoToRegister();
+                } else {
+                  setStep('phone');
+                }
+              },
+            },
+            { text: 'Cancel', style: 'cancel' },
+          ]
+        );
+        return;
+      }
+
+      // 2. User exists in DB! Sync with backend & check account status
       try {
         const syncRes = await userService.syncFirebaseUser({
-          email: googleUser.email,
+          email: cleanEmail,
           displayName: googleUser.displayName,
           photoURL: googleUser.photoURL,
           uid: googleUser.uid,
@@ -340,18 +397,18 @@ export function SignInScreen({ onBack, onAccountStatus, onLoginSuccess }: Props)
                 (syncRes as any)?.checklist,
             });
             return;
-          } else {
-            // Google user is Active!
-            if (onLoginSuccess) {
-              const activeUser: any = {
-                uid: syncRes?.data?._id || syncRes?.data?.id || googleUser.uid,
-                displayName: syncRes?.data?.fullName || googleUser.displayName || 'Partner',
-                phoneNumber: syncRes?.data?.phone || googleUser.phoneNumber || '',
-                email: syncRes?.data?.email || googleUser.email || '',
-              };
-              onLoginSuccess(activeUser);
-              return;
-            }
+          }
+        } else {
+          // Google user is Active!
+          if (onLoginSuccess) {
+            const activeUser: any = {
+              uid: syncRes?.data?._id || syncRes?.data?.id || googleUser.uid,
+              displayName: syncRes?.data?.fullName || googleUser.displayName || 'Partner',
+              phoneNumber: syncRes?.data?.phone || googleUser.phoneNumber || '',
+              email: syncRes?.data?.email || googleUser.email || '',
+            };
+            onLoginSuccess(activeUser);
+            return;
           }
         }
       } catch (syncErr: any) {
@@ -402,9 +459,11 @@ export function SignInScreen({ onBack, onAccountStatus, onLoginSuccess }: Props)
 
         <KweeckoLogo compact />
 
-        <Text style={styles.heading}>Sign In</Text>
+        <Text style={styles.heading}>{isRegister ? 'Register as Partner' : 'Sign In'}</Text>
         <Text style={styles.subtext}>
-          Sign in with your mobile number or Google account to access your tasks.
+          {isRegister
+            ? 'Enter your mobile number to register and receive instant society dispatches.'
+            : 'Sign in with your mobile number or Google account to access your tasks.'}
         </Text>
 
         {error && (
@@ -432,7 +491,7 @@ export function SignInScreen({ onBack, onAccountStatus, onLoginSuccess }: Props)
             </View>
 
             <GradientButton
-              title="Send OTP"
+              title={isRegister ? 'Send OTP to Register' : 'Send OTP'}
               onPress={handleSendOtp}
               disabled={sendingOtp || phoneNumber.length < 10}
               loading={sendingOtp}
@@ -511,6 +570,22 @@ export function SignInScreen({ onBack, onAccountStatus, onLoginSuccess }: Props)
             </View>
           )}
         </TouchableOpacity>
+
+        {/* Switch between Sign In and Register */}
+        <View style={styles.switchAuthRow}>
+          <Text style={styles.switchAuthPrompt}>
+            {isRegister
+              ? 'Already registered as a partner?'
+              : "Don't have a partner account?"}
+          </Text>
+          <TouchableOpacity
+            onPress={isRegister ? onGoToSignIn : onGoToRegister}
+            activeOpacity={0.8}>
+            <Text style={styles.switchAuthLink}>
+              {isRegister ? ' Sign In' : ' Register / Sign Up'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <Text style={styles.termsText}>
           By signing in, you agree to Kweecko's Partner Terms of Service and Privacy Policy.
@@ -770,6 +845,25 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     marginTop: 32,
+  },
+  switchAuthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    marginBottom: 4,
+    flexWrap: 'wrap',
+  },
+  switchAuthPrompt: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  switchAuthLink: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
   },
   loadingOverlay: {
     position: 'absolute',

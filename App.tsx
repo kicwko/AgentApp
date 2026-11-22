@@ -130,6 +130,44 @@ function App() {
         return;
       }
 
+      const userEmail = (nextUser.email || '').trim().toLowerCase();
+      const userPhone = (nextUser.phoneNumber || '').replace(/\D/g, '').slice(-10);
+
+      // Verify that user exists in database before allowing login or session storage
+      let isRegistered = false;
+      try {
+        if (userEmail) {
+          const checkRes = await userService.checkUserExists({ email: userEmail });
+          if (checkRes?.exists) {
+            isRegistered = true;
+          }
+        }
+        if (!isRegistered && userPhone) {
+          const checkRes = await userService.checkUserExists({ phone: userPhone });
+          if (checkRes?.exists) {
+            isRegistered = true;
+          }
+        }
+      } catch (checkErr) {
+        console.warn('[App] Error verifying user registration in DB:', checkErr);
+      }
+
+      if (!isRegistered) {
+        // User is not in DB: do NOT allow login and do NOT auto-register!
+        console.log('[App] Auth listener: User not registered in DB:', userEmail || userPhone);
+        try {
+          await signOutUser();
+          await sessionService.clearSession();
+        } catch {}
+        if (isMounted) {
+          setUser(null);
+          setAccountStatus(null);
+          setCheckingAuth(false);
+          setAuthScreen('register');
+        }
+        return;
+      }
+
       saveAndSetUser(nextUser);
       try {
         const profileRes = await userService.fetchPartnerProfile({
@@ -402,7 +440,10 @@ function App() {
   } else if (authScreen === 'signin' || authScreen === 'register') {
     content = (
       <SignInScreen
+        isRegister={authScreen === 'register'}
         onBack={() => setAuthScreen('welcome')}
+        onGoToRegister={() => setAuthScreen('register')}
+        onGoToSignIn={() => setAuthScreen('signin')}
         onAccountStatus={saveAndSetAccountStatus}
         onLoginSuccess={activeUser => {
           saveAndSetUser(activeUser);
