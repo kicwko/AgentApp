@@ -56,6 +56,7 @@ export function SignInScreen({
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSignupLink, setShowSignupLink] = useState(false);
 
   // Resend cooldown timer in seconds
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -84,6 +85,7 @@ export function SignInScreen({
 
   const handleSendOtp = async () => {
     setError(null);
+    setShowSignupLink(false);
     const cleanedNumber = phoneNumber.replace(/[\s\-()]/g, '');
     if (!cleanedNumber || cleanedNumber.length < 7) {
       setError('Please enter a valid mobile number.');
@@ -94,7 +96,7 @@ export function SignInScreen({
     const fullPhone = getFullPhoneNumber();
     setSendingOtp(true);
     try {
-      // 1. Check with backend loginSendOtp (detects if user is Blocked)
+      // 1. Check with backend loginSendOtp (detects if user is Blocked or Not Onboarded)
       try {
         const checkRes = await userService.loginSendOtp(last10);
         if (checkRes) {
@@ -124,6 +126,34 @@ export function SignInScreen({
             });
             return;
           }
+        }
+        const errMsg = String(checkErr?.message || checkErr?.error || '').toLowerCase();
+        if (
+          checkErr?.status === 404 ||
+          checkErr?.status === '404' ||
+          errMsg.includes('not found') ||
+          errMsg.includes('not registered') ||
+          errMsg.includes('not onboarded')
+        ) {
+          const friendlyMsg = "Ohh! Account not found. Looks like you're not onboarded yet.";
+          setError(friendlyMsg);
+          setShowSignupLink(true);
+          Alert.alert(
+            'Not Onboarded Yet',
+            `Ohh! Account not found for +91 ${last10}.\n\nLooks like you're not onboarded yet. Please register to create your agent partner account.`,
+            [
+              {
+                text: 'Register / Sign Up',
+                onPress: () => {
+                  if (onGoToRegister) {
+                    onGoToRegister();
+                  }
+                },
+              },
+              { text: 'Cancel', style: 'cancel' },
+            ]
+          );
+          return;
         }
       }
 
@@ -274,6 +304,36 @@ export function SignInScreen({
             return;
           }
         }
+        const errMsg = String(backendErr?.message || backendErr?.error || '').toLowerCase();
+        if (
+          backendErr?.status === 404 ||
+          backendErr?.status === '404' ||
+          errMsg.includes('not found') ||
+          errMsg.includes('not registered') ||
+          errMsg.includes('not onboarded')
+        ) {
+          const friendlyMsg = "Ohh! Account not found. Looks like you're not onboarded yet.";
+          setError(friendlyMsg);
+          setShowSignupLink(true);
+          Alert.alert(
+            'Not Onboarded Yet',
+            `Ohh! Account not found for +91 ${last10}.\n\nLooks like you're not onboarded yet. Please register to create your agent partner account.`,
+            [
+              {
+                text: 'Register / Sign Up',
+                onPress: () => {
+                  if (onGoToRegister) {
+                    onGoToRegister();
+                  } else {
+                    setStep('phone');
+                  }
+                },
+              },
+              { text: 'Cancel', style: 'cancel' },
+            ]
+          );
+          return;
+        }
         if (!firebaseConfirmed) {
           throw backendErr;
         }
@@ -326,14 +386,15 @@ export function SignInScreen({
           await sessionService.clearSession();
         } catch {}
 
-        const notFoundMsg = `No registered partner account found with email "${cleanEmail}". Please register first.`;
-        setError(notFoundMsg);
+        const friendlyMsg = "Ohh! Account not found. Looks like you're not onboarded yet.";
+        setError(friendlyMsg);
+        setShowSignupLink(true);
         Alert.alert(
-          'Account Not Found',
-          `No registered partner account was found associated with "${cleanEmail}".\n\nPlease register to create your agent partner account first.`,
+          'Not Onboarded Yet',
+          `Ohh! Account not found for "${cleanEmail}".\n\nLooks like you're not onboarded yet. Please register to create your agent partner account.`,
           [
             {
-              text: 'Sign Up / Register',
+              text: 'Register / Sign Up',
               onPress: () => {
                 if (onGoToRegister) {
                   onGoToRegister();
@@ -442,6 +503,7 @@ export function SignInScreen({
 
   const handleChangeNumber = () => {
     setError(null);
+    setShowSignupLink(false);
     setOtpCode('');
     setStep('phone');
   };
@@ -469,6 +531,24 @@ export function SignInScreen({
         {error && (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{error}</Text>
+            {showSignupLink && (
+              <TouchableOpacity
+                style={styles.errorSignupCta}
+                onPress={() => {
+                  setError(null);
+                  setShowSignupLink(false);
+                  if (onGoToRegister) {
+                    onGoToRegister();
+                  } else {
+                    setStep('phone');
+                  }
+                }}
+                activeOpacity={0.85}>
+                <Text style={styles.errorSignupCtaText}>
+                  👉 Register / Onboard as Partner
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -622,11 +702,19 @@ function mapAuthError(err: unknown): string {
       return 'Network error. Please check your internet connection and try again.';
     case 'auth/user-disabled':
       return 'This agent account has been disabled.';
-    default:
-      return (
-        (err as { message?: string } | null)?.message ??
-        'An error occurred. Please check your details and try again.'
-      );
+    default: {
+      const rawMsg = String((err as { message?: string } | null)?.message ?? '');
+      const lower = rawMsg.toLowerCase();
+      if (
+        lower.includes('not found') ||
+        lower.includes('not registered') ||
+        lower.includes('not onboarded') ||
+        lower.includes('no account')
+      ) {
+        return "Ohh! Account not found. Looks like you're not onboarded yet.";
+      }
+      return rawMsg || 'An error occurred. Please check your details and try again.';
+    }
   }
 }
 
@@ -678,6 +766,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.colorOnErrorContainer,
     lineHeight: 20,
+  },
+  errorSignupCta: {
+    marginTop: 10,
+    backgroundColor: '#FFE4E6',
+    borderWidth: 1,
+    borderColor: '#FDA4AF',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignSelf: 'flex-start',
+  },
+  errorSignupCtaText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#BE123C',
   },
   phoneSection: {
     marginBottom: 8,

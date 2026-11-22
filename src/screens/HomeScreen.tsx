@@ -172,7 +172,6 @@ export function HomeScreen({ user, onSignOut }: Props) {
       <AppHeader
         isOnDuty={isOnDuty}
         onToggleDuty={handleToggleDuty}
-        onPressProfile={() => setActiveTab('settings')}
       />
 
       {/* Main Tab Content - Kept mounted so page DOM and scroll are never removed on tab switch */}

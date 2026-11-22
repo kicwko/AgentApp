@@ -804,7 +804,6 @@ export function AccountStatusScreen({
       {/* Fixed Common App Header at Top */}
       <AppHeader
         showDutyToggle={false}
-        showProfile={false}
       />
 
       <KeyboardAvoidingView

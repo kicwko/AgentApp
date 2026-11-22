@@ -13,21 +13,17 @@ import { typography } from '../theme/typography';
 type Props = {
   isOnDuty?: boolean;
   onToggleDuty?: () => void;
-  onPressProfile?: () => void;
   onPressLogo?: () => void;
   title?: string;
   showDutyToggle?: boolean;
-  showProfile?: boolean;
   rightAction?: React.ReactNode;
 };
 
 export function AppHeader({
   isOnDuty = true,
   onToggleDuty,
-  onPressProfile,
   onPressLogo,
   showDutyToggle = true,
-  showProfile = true,
   rightAction,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -43,7 +39,7 @@ export function AppHeader({
           style={styles.headerLogo}
         />
 
-        {/* Right actions: Duty toggle + Profile avatar */}
+        {/* Right actions: Duty toggle */}
         <View style={styles.actionsGroup}>
           {rightAction}
 
@@ -63,25 +59,6 @@ export function AppHeader({
               <Text style={styles.dutyText}>
                 {isOnDuty ? 'ON DUTY' : 'OFF DUTY'}
               </Text>
-            </TouchableOpacity>
-          )}
-
-          {showProfile && (
-            <TouchableOpacity
-              style={styles.profileWrapper}
-              onPress={onPressProfile}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="User profile">
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarIcon}>👤</Text>
-              </View>
-              <View
-                style={[
-                  styles.avatarStatusBadge,
-                  isOnDuty ? styles.statusDotOn : styles.statusDotOff,
-                ]}
-              />
             </TouchableOpacity>
           )}
         </View>
@@ -139,32 +116,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.onSurface,
     letterSpacing: 0.2,
-  },
-  profileWrapper: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarIcon: {
-    color: colors.white,
-    fontSize: 14,
-  },
-  avatarStatusBadge: {
-    position: 'absolute',
-    bottom: -1,
-    right: -1,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: colors.surface,
   },
 });

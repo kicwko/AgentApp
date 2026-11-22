@@ -173,4 +173,61 @@ describe('Google / Gmail Authentication Database Registration Check', () => {
     // 4. signOutUser was NOT called
     expect(signOutUser).not.toHaveBeenCalled();
   });
+
+  it('shows friendly not onboarded error and signup CTA when mobile number is not found', async () => {
+    (userService.loginSendOtp as jest.Mock).mockRejectedValue({
+      status: 404,
+      message: 'User account not found',
+    });
+
+    const onGoToRegister = jest.fn();
+
+    let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SignInScreen
+          onBack={jest.fn()}
+          onGoToRegister={onGoToRegister}
+        />
+      );
+    });
+
+    const root = renderer!.root;
+    // Enter mobile number
+    const textInput = root.findByProps({ placeholder: '10-digit mobile number' });
+    ReactTestRenderer.act(() => {
+      textInput.props.onChangeText('9999988888');
+    });
+
+    // Press Send OTP
+    const sendOtpText = root.findAllByProps({ children: 'Send OTP' })[0];
+    let sendOtpBtn = sendOtpText.parent;
+    while (sendOtpBtn && !sendOtpBtn.props.onPress) {
+      sendOtpBtn = sendOtpBtn.parent;
+    }
+
+    await ReactTestRenderer.act(async () => {
+      await sendOtpBtn!.props.onPress();
+    });
+
+    // Check that friendly error is rendered
+    const textNodes = root.findAllByType('Text' as any);
+    const renderedTexts = textNodes.map((n: any) => n.props.children);
+
+    expect(
+      renderedTexts.some(
+        (t: any) =>
+          typeof t === 'string' &&
+          t.includes("Ohh! Account not found. Looks like you're not onboarded yet.")
+      )
+    ).toBe(true);
+
+    // Check that the signup CTA button is rendered
+    expect(
+      renderedTexts.some(
+        (t: any) =>
+          typeof t === 'string' && t.includes('Register / Onboard as Partner')
+      )
+    ).toBe(true);
+  });
 });
