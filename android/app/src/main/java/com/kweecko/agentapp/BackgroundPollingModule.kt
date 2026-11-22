@@ -128,6 +128,20 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     }
 
     @ReactMethod
+    fun isAlertActive(promise: Promise) {
+        promise.resolve(OrderPollingService.isOrderAlertActive)
+    }
+
+    @ReactMethod
+    fun setAlertActive(active: Boolean, promise: Promise) {
+        OrderPollingService.isOrderAlertActive = active
+        if (!active) {
+            OrderPollingService.resetLastNotifiedOrder()
+        }
+        promise.resolve(true)
+    }
+
+    @ReactMethod
     fun stopRinging(promise: Promise) {
         try {
             OrderRingtoneManager.stopRinging()

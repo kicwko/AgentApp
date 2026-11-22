@@ -46,30 +46,57 @@ class OrderPollingService : Service() {
         const val CHANNEL_ORDERS_ID = "kweecko_order_alerts_v6"
 
         private const val DEFAULT_BASE_URL = "https://kweecko.com/api"
-        private const val POLL_INTERVAL_SECONDS = 15L
+        private const val POLL_INTERVAL_SECONDS = 25L
 
         @Volatile
         var isServiceRunning = false
             private set
 
         @Volatile
+        var isOrderAlertActive = false
+
+        @Volatile
         var lastNotifiedOrderId: String? = null
+
+        private var instance: OrderPollingService? = null
 
         fun resetLastNotifiedOrder() {
             lastNotifiedOrderId = null
+            isOrderAlertActive = false
+            instance?.cancelAlertAutoExpiry()
         }
     }
 
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var scheduler: ScheduledExecutorService? = null
     private var agentPhone: String? = null
     private var agentUserId: String? = null
     private var authToken: String? = null
     private var apiBaseUrl: String = DEFAULT_BASE_URL
 
+    private val alertAutoExpiryRunnable = Runnable {
+        Log.d(TAG, "5-minute alert auto-expiry reached. Resetting alert active flag and stopping sound.")
+        isOrderAlertActive = false
+        lastNotifiedOrderId = null
+        OrderRingtoneManager.stopRinging()
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        manager?.cancel(ORDER_ALERT_NOTIFICATION_ID)
+    }
+
+    fun startAlertAutoExpiry() {
+        mainHandler.removeCallbacks(alertAutoExpiryRunnable)
+        mainHandler.postDelayed(alertAutoExpiryRunnable, 300_000L) // 5 minutes
+    }
+
+    fun cancelAlertAutoExpiry() {
+        mainHandler.removeCallbacks(alertAutoExpiryRunnable)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         createNotificationChannels()
     }
 
@@ -281,6 +308,11 @@ class OrderPollingService : Service() {
     }
 
     private fun executePollCycle() {
+        if (isOrderAlertActive) {
+            Log.d(TAG, "Order alert is actively running on user's device. Skipping poll cycle.")
+            return
+        }
+
         val coords = getCurrentCoordinates()
         val lat = coords.first
         val lng = coords.second
@@ -425,6 +457,9 @@ class OrderPollingService : Service() {
                 val price = pendingOrderObj.optDouble("totalPrice", 0.0)
 
                 if (orderId.isNotBlank()) {
+                    isOrderAlertActive = true
+                    startAlertAutoExpiry()
+
                     val orderJson = pendingOrderObj.toString()
                     BackgroundPollingModule.pendingOrderJson = orderJson
 
@@ -451,8 +486,10 @@ class OrderPollingService : Service() {
                 }
             } else {
                 // If there was a pending order that was accepted, declined, or canceled elsewhere, reset
-                if (lastNotifiedOrderId != null) {
+                if (lastNotifiedOrderId != null || isOrderAlertActive) {
                     lastNotifiedOrderId = null
+                    isOrderAlertActive = false
+                    cancelAlertAutoExpiry()
                     OrderRingtoneManager.stopRinging()
                     val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
                     manager?.cancel(ORDER_ALERT_NOTIFICATION_ID)
@@ -649,6 +686,8 @@ class OrderPollingService : Service() {
     }
 
     override fun onDestroy() {
+        if (instance == this) instance = null
+        cancelAlertAutoExpiry()
         stopPolling()
         super.onDestroy()
     }

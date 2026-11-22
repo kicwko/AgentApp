@@ -226,8 +226,8 @@ class ApiClient {
     } catch (error: any) {
       clearTimeout(timeoutId);
 
-      // Network fallback attempt
-      if (allowFallback) {
+      // Network fallback attempt (only for network reachability failures, not HTTP status responses)
+      if (allowFallback && !error?.status) {
         try {
           const fallbackBase =
             base === API_CONFIG.baseUrl

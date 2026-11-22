@@ -176,6 +176,7 @@ export const orderService = {
     orderId: string,
     payload: { status: string; reason?: string; canceledBy?: string }
   ): Promise<ApiResponse<BackendOrder>> => {
+    // 1. Primary: /api/orders/:id/status
     try {
       const res = await apiClient.put<BackendOrder>(
         `${API_CONFIG.endpoints.orders}/${orderId}/status`,
@@ -185,10 +186,25 @@ export const orderService = {
         return res;
       }
     } catch {
-      // Fallback to /orders/:id directly if /status route differs
+      // Fallback
     }
+
+    // 2. Secondary: /api/orders/:id
+    try {
+      const res = await apiClient.put<BackendOrder>(
+        `${API_CONFIG.endpoints.orders}/${orderId}`,
+        payload
+      );
+      if (res && res.success) {
+        return res;
+      }
+    } catch {
+      // Fallback
+    }
+
+    // 3. Tertiary: /api/orders/update/:id
     return apiClient.put<BackendOrder>(
-      `${API_CONFIG.endpoints.orders}/${orderId}`,
+      `${API_CONFIG.endpoints.orders}/update/${orderId}`,
       payload
     );
   },

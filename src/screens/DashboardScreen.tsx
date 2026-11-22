@@ -219,6 +219,9 @@ function calculateDashboardMetrics(orders: BackendOrder[]) {
 
 export function DashboardScreen({ user }: { user?: User } = {}) {
   const [pendingOrder, setPendingOrder] = useState<BackendOrder | null>(null);
+  const pendingOrderRef = useRef<BackendOrder | null>(null);
+  pendingOrderRef.current = pendingOrder;
+
   const [pendingTimeLeft, setPendingTimeLeft] = useState<number>(300); // 5 minutes = 300 seconds
   const [orderAccepting, setOrderAccepting] = useState(false);
   const [orderDeclining, setOrderDeclining] = useState(false);
@@ -398,6 +401,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
       } finally {
         orderPollingService.stopRinging().catch(() => {});
         orderPollingService.clearLatestPendingOrder().catch(() => {});
+        orderPollingService.setAlertActive(false);
         setPendingOrder(null);
         setPendingTimeLeft(0);
         await loadDashboardData().catch(() => {});
@@ -406,8 +410,13 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     [loadDashboardData]
   );
 
-  // Poll API (/api/orders/poll) every 15 seconds
+  // Poll API (/api/orders/poll) every 25 seconds
   const pollNewOrders = useCallback(async () => {
+    // If an alert or pending order is active on the screen/phone, do not call polling API
+    if (pendingOrderRef.current || orderPollingService.getAlertActive()) {
+      return;
+    }
+
     try {
       const coords = await getCoordinates();
       const cleanPhone = getAgentPhone();
@@ -434,7 +443,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
 
         if (incomingPending) {
           const incomingKey = incomingPending._id || incomingPending.orderId;
-          const currentKey = pendingOrder ? pendingOrder._id || pendingOrder.orderId : null;
+          const currentKey: string | null = null;
 
           if (incomingKey !== currentKey) {
             const createdMs = incomingPending.createdAt
@@ -446,6 +455,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
             if (remainSec <= 0) {
               await handleAutoDecline(incomingPending);
             } else {
+              orderPollingService.setAlertActive(true);
               const isRinging = await orderPollingService.isRinging();
               if (!isRinging) {
                 orderPollingService.startRinging().catch(() => {});
@@ -460,11 +470,11 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
       // Automatically refresh dashboard data to keep tasks and stats current without page refresh
       await loadDashboardData();
     } catch (err: any) {
-      console.warn('[DashboardScreen] Error during 15s poll:', err?.message);
+      console.warn('[DashboardScreen] Error during 25s poll:', err?.message);
     }
-  }, [getCoordinates, getAgentPhone, getAgentId, pendingOrder, handleAutoDecline, loadDashboardData]);
+  }, [getCoordinates, getAgentPhone, getAgentId, handleAutoDecline, loadDashboardData]);
 
-  // Setup 30-second polling interval & listen to background polling service events
+  // Setup 25-second polling interval & listen to background polling service events
   useEffect(() => {
     // Check if an order was delivered via push notification click before listeners mounted
     orderPollingService.getLatestPendingOrder().then(async latestPending => {
@@ -475,6 +485,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         const elapsedSec = Math.max(0, Math.floor((Date.now() - createdMs) / 1000));
         const remainSec = elapsedSec < 300 ? 300 - elapsedSec : 0;
         if (remainSec > 0) {
+          orderPollingService.setAlertActive(true);
           const isRinging = await orderPollingService.isRinging();
           if (!isRinging) {
             orderPollingService.startRinging().catch(() => {});
@@ -489,7 +500,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     // Listen to incoming orders from native background service or foreground poll
     const unsubscribePending = orderPollingService.subscribeToPendingOrders(async incomingPending => {
       const incomingKey = incomingPending._id || incomingPending.orderId;
-      const currentKey = pendingOrder ? pendingOrder._id || pendingOrder.orderId : null;
+      const currentKey = pendingOrderRef.current ? pendingOrderRef.current._id || pendingOrderRef.current.orderId : null;
 
       if (incomingKey !== currentKey) {
         const createdMs = incomingPending.createdAt
@@ -501,6 +512,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         if (remainSec <= 0) {
           await handleAutoDecline(incomingPending);
         } else {
+          orderPollingService.setAlertActive(true);
           const isRinging = await orderPollingService.isRinging();
           if (!isRinging) {
             orderPollingService.startRinging().catch(() => {});
@@ -520,6 +532,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
       console.log('[DashboardScreen] Order accepted via notification action:', orderId);
       orderPollingService.stopRinging().catch(() => {});
       orderPollingService.clearLatestPendingOrder().catch(() => {});
+      orderPollingService.setAlertActive(false);
       setPendingOrder(null);
       setPendingTimeLeft(300);
       loadDashboardData().catch(() => {});
@@ -529,6 +542,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
       console.log('[DashboardScreen] Order declined via notification action:', orderId);
       orderPollingService.stopRinging().catch(() => {});
       orderPollingService.clearLatestPendingOrder().catch(() => {});
+      orderPollingService.setAlertActive(false);
       setPendingOrder(null);
       setPendingTimeLeft(300);
       loadDashboardData().catch(() => {});
@@ -537,7 +551,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     pollNewOrders();
     const pollInterval = setInterval(() => {
       pollNewOrders();
-    }, 15000);
+    }, 25000);
 
     return () => {
       clearInterval(pollInterval);
@@ -545,9 +559,8 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
       unsubscribePoll();
       unsubscribeAccepted();
       unsubscribeDeclined();
-      orderPollingService.stopRinging().catch(() => {});
     };
-  }, [pollNewOrders, pendingOrder, handleAutoDecline, loadDashboardData]);
+  }, [pollNewOrders, handleAutoDecline, loadDashboardData]);
 
   // 1-second Countdown Timer for Pending Order (5 Minutes)
   useEffect(() => {
@@ -578,6 +591,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     // Immediately stop audio & dismiss modal optimistically so UI never freezes
     orderPollingService.stopRinging().catch(() => {});
     orderPollingService.clearLatestPendingOrder().catch(() => {});
+    orderPollingService.setAlertActive(false);
     setPendingOrder(null);
     setPendingTimeLeft(0);
     setOrderAccepting(false);
@@ -612,6 +626,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     // Immediately stop audio & dismiss modal optimistically so UI never freezes
     orderPollingService.stopRinging().catch(() => {});
     orderPollingService.clearLatestPendingOrder().catch(() => {});
+    orderPollingService.setAlertActive(false);
     setPendingOrder(null);
     setPendingTimeLeft(0);
     setOrderDeclining(false);

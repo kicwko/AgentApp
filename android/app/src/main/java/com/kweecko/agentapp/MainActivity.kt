@@ -28,33 +28,32 @@ class MainActivity : ReactActivity() {
         android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
       )
     }
-    handleDismissNotification()
+    handleNotificationIntent()
     applyLightSystemBars()
   }
 
   override fun onNewIntent(intent: Intent?) {
     super.onNewIntent(intent)
     setIntent(intent)
-    handleDismissNotification()
+    handleNotificationIntent()
   }
 
   override fun onResume() {
     super.onResume()
-    handleDismissNotification()
+    // Do NOT stop ringing or dismiss alert in onResume.
+    // The persistent ringtone must continue playing until user explicitly accepts or declines!
+    handleNotificationIntent()
     applyLightSystemBars()
   }
 
   /**
-   * When user clicks on the push notification or returns to app,
-   * immediately dismiss the order alert notification and silence any active ringtone.
+   * When user clicks on the push notification banner to open the app,
+   * extract the dispatched order payload and emit to React Native so the full-screen
+   * incoming dispatch alert modal appears immediately.
+   * Note: The ringtone continues to play until the user taps ACCEPT or DECLINE.
    */
-  private fun handleDismissNotification() {
+  private fun handleNotificationIntent() {
     try {
-      val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-      manager?.cancel(1002) // OrderPollingService.ORDER_ALERT_NOTIFICATION_ID
-      OrderRingtoneManager.stopRinging()
-      OrderPollingService.resetLastNotifiedOrder()
-
       val orderJson = intent?.getStringExtra("orderJson")
       if (!orderJson.isNullOrBlank()) {
         intent?.removeExtra("orderJson")
@@ -62,6 +61,10 @@ class MainActivity : ReactActivity() {
         intent?.removeExtra("openOrder")
         BackgroundPollingModule.pendingOrderJson = orderJson
         BackgroundPollingModule.emitOrderEvent("onNewPendingOrder", orderJson)
+
+        // Clear notification banner from shade once app is opened to inspect the order
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        manager?.cancel(1002) // OrderPollingService.ORDER_ALERT_NOTIFICATION_ID
       }
     } catch (_: Exception) {}
   }

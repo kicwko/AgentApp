@@ -18,6 +18,8 @@ interface PollingConfig {
 
 class OrderPollingServiceManager {
   private isRunning: boolean = false;
+  private isAlertActive: boolean = false;
+  private alertTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private intervalTimer: ReturnType<typeof setInterval> | null = null;
   private eventEmitter: NativeEventEmitter | null = null;
   private currentConfig: PollingConfig = {};
@@ -52,6 +54,7 @@ class OrderPollingServiceManager {
         const order: BackendOrder =
           typeof payload === 'string' ? JSON.parse(payload) : payload;
         this.cachedPendingOrder = order;
+        this.setAlertActive(true);
         this.notifyPendingOrderSubscribers(order);
       } catch (err) {
         console.warn('[OrderPollingService] Failed parsing native pending order:', err);
@@ -120,14 +123,14 @@ class OrderPollingServiceManager {
       }
     }
 
-    // 2. Run initial foreground poll immediately, then every 15 seconds
+    // 2. Run initial foreground poll immediately, then every 25 seconds
     await this.executeForegroundPoll();
     if (this.intervalTimer) {
       clearInterval(this.intervalTimer);
     }
     this.intervalTimer = setInterval(() => {
       this.executeForegroundPoll();
-    }, 15000);
+    }, 25000);
   }
 
   /**
@@ -135,6 +138,7 @@ class OrderPollingServiceManager {
    */
   public async stop(): Promise<void> {
     this.isRunning = false;
+    this.setAlertActive(false);
     if (this.intervalTimer) {
       clearInterval(this.intervalTimer);
       this.intervalTimer = null;
@@ -151,10 +155,11 @@ class OrderPollingServiceManager {
   }
 
   /**
-   * Single poll execution: obtains GPS coordinates and calls /api/orders/poll
+   * Single poll execution: obtains GPS coordinates and calls /api/orders/poll.
+   * If an active order alert is running on screen/phone, polling is skipped.
    */
   public async executeForegroundPoll(): Promise<void> {
-    if (!this.isRunning) return;
+    if (!this.isRunning || this.isAlertActive) return;
 
     try {
       const coords = await locationService.getCurrentCoordinates();
@@ -183,6 +188,7 @@ class OrderPollingServiceManager {
 
         const pending = candidateOrders.find(o => o.status === 'Pending');
         if (pending) {
+          this.setAlertActive(true);
           this.notifyPendingOrderSubscribers(pending);
         }
       }
@@ -269,6 +275,7 @@ class OrderPollingServiceManager {
    * Stop continuous ringtone and vibration immediately (upon Accept, Decline, or Dismiss).
    */
   public async stopRinging(): Promise<void> {
+    this.setAlertActive(false);
     const mod = this.getNativeModule();
     if (Platform.OS === 'android' && mod?.stopRinging) {
       try {
@@ -292,6 +299,31 @@ class OrderPollingServiceManager {
       }
     }
     return false;
+  }
+
+  /**
+   * Set alert active flag to prevent polling API calls while an order alert is running.
+   */
+  public setAlertActive(active: boolean): void {
+    this.isAlertActive = active;
+    if (this.alertTimeoutId) {
+      clearTimeout(this.alertTimeoutId);
+      this.alertTimeoutId = null;
+    }
+    if (active) {
+      // Auto-expire alert active flag after 5 minutes (300,000 ms)
+      this.alertTimeoutId = setTimeout(() => {
+        this.setAlertActive(false);
+      }, 300000);
+    }
+    const mod = this.getNativeModule();
+    if (Platform.OS === 'android' && mod?.setAlertActive) {
+      mod.setAlertActive(active).catch(() => {});
+    }
+  }
+
+  public getAlertActive(): boolean {
+    return this.isAlertActive;
   }
 
   /**
@@ -319,6 +351,7 @@ class OrderPollingServiceManager {
    */
   public async clearLatestPendingOrder(): Promise<void> {
     this.cachedPendingOrder = null;
+    this.setAlertActive(false);
     const mod = this.getNativeModule();
     if (Platform.OS === 'android' && mod?.clearLatestPendingOrder) {
       try {

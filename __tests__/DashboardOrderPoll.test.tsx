@@ -4,6 +4,7 @@ import ReactTestRenderer from 'react-test-renderer';
 import { DashboardScreen } from '../src/screens/DashboardScreen';
 import { orderService, type BackendOrder } from '../src/services/orderService';
 import { userService } from '../src/services/userService';
+import { orderPollingService } from '../src/services/orderPollingService';
 
 jest.mock('../src/services/orderService');
 jest.mock('../src/services/userService');
@@ -60,6 +61,7 @@ describe('DashboardScreen Polling and Order Dispatch', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    orderPollingService.setAlertActive(false);
 
     (userService.fetchPartnerProfile as jest.Mock).mockResolvedValue({
       success: true,
