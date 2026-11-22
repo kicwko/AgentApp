@@ -332,8 +332,8 @@ class OrderPollingService : Service() {
     }
 
     private fun executePollCycle() {
-        if (isOrderAlertActive) {
-            Log.d(TAG, "Order alert is actively running on user's device. Skipping poll cycle.")
+        if (!isServiceRunning || isOrderAlertActive) {
+            Log.d(TAG, "Service is stopped (off duty) or order alert is active. Skipping poll cycle.")
             return
         }
 

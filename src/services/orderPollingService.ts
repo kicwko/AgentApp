@@ -18,6 +18,7 @@ interface PollingConfig {
 
 class OrderPollingServiceManager {
   private isRunning: boolean = false;
+  private isOnDuty: boolean = true;
   private isAlertActive: boolean = false;
   private alertTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private intervalTimer: ReturnType<typeof setInterval> | null = null;
@@ -162,11 +163,26 @@ class OrderPollingServiceManager {
   }
 
   /**
+   * Set on-duty availability state. When off-duty, stops background service
+   * and prevents polling API calls.
+   */
+  public setOnDuty(onDuty: boolean): void {
+    this.isOnDuty = onDuty;
+    if (!onDuty) {
+      this.stop().catch(() => {});
+    }
+  }
+
+  public getOnDuty(): boolean {
+    return this.isOnDuty;
+  }
+
+  /**
    * Single poll execution: obtains GPS coordinates and calls /api/orders/poll.
    * If an active order alert is running on screen/phone, polling is skipped.
    */
   public async executeForegroundPoll(): Promise<void> {
-    if (!this.isRunning || this.isAlertActive) return;
+    if (!this.isRunning || !this.isOnDuty || this.isAlertActive) return;
 
     try {
       const coords = await locationService.getCurrentCoordinates();

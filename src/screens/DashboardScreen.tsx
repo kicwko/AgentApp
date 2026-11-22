@@ -235,14 +235,20 @@ let cachedDashboardStats = {
 export function DashboardScreen({
   user,
   isActive = true,
+  isOnDuty = true,
+  onSwitchToDashboard,
 }: {
   user?: User;
   isActive?: boolean;
+  isOnDuty?: boolean;
+  onSwitchToDashboard?: () => void;
 } = {}) {
   const [pendingOrder, setPendingOrder] = useState<BackendOrder | null>(null);
   const pendingOrderRef = useRef<BackendOrder | null>(null);
   pendingOrderRef.current = pendingOrder;
   const declinedOrderIdsRef = useRef<Set<string>>(new Set());
+  const lastAcceptedToastTimeRef = useRef<number>(0);
+  const isAcceptingInProgressRef = useRef<boolean>(false);
 
   const [pendingTimeLeft, setPendingTimeLeft] = useState<number>(300); // 5 minutes = 300 seconds
   const [orderAccepting, setOrderAccepting] = useState(false);
@@ -474,8 +480,8 @@ export function DashboardScreen({
 
   // Poll API (/api/orders/poll) every 25 seconds
   const pollNewOrders = useCallback(async () => {
-    // If an alert or pending order is active on the screen/phone, do not call polling API
-    if (pendingOrderRef.current || orderPollingService.getAlertActive()) {
+    // If user is offline (OFF DUTY) or an alert/pending order is active, do not call polling API
+    if (!isOnDuty || pendingOrderRef.current || orderPollingService.getAlertActive()) {
       return;
     }
 
@@ -529,6 +535,7 @@ export function DashboardScreen({
               }
               setPendingOrder(incomingPending);
               setPendingTimeLeft(remainSec);
+              onSwitchToDashboard?.();
             }
           }
         }
@@ -539,7 +546,7 @@ export function DashboardScreen({
     } catch (err: any) {
       console.warn('[DashboardScreen] Error during 25s poll:', err?.message);
     }
-  }, [getCoordinates, getAgentPhone, getAgentId, handleAutoDecline, loadDashboardData]);
+  }, [isOnDuty, getCoordinates, getAgentPhone, getAgentId, handleAutoDecline, loadDashboardData, onSwitchToDashboard]);
 
   // Setup 25-second polling interval & listen to background polling service events
   useEffect(() => {
@@ -563,6 +570,7 @@ export function DashboardScreen({
           }
           setPendingOrder(latestPending);
           setPendingTimeLeft(remainSec);
+          onSwitchToDashboard?.();
         }
       }
       loadDashboardData().catch(() => {});
@@ -598,6 +606,7 @@ export function DashboardScreen({
           }
           setPendingOrder(incomingPending);
           setPendingTimeLeft(remainSec);
+          onSwitchToDashboard?.();
         }
       }
       loadDashboardData().catch(() => {});
@@ -615,6 +624,12 @@ export function DashboardScreen({
       setPendingOrder(null);
       pendingOrderRef.current = null;
       setPendingTimeLeft(300);
+      if (Date.now() - lastAcceptedToastTimeRef.current > 4000) {
+        lastAcceptedToastTimeRef.current = Date.now();
+        if (Platform.OS === 'android') {
+          ToastAndroid.show('Order accepted! En route to site.', ToastAndroid.SHORT);
+        }
+      }
       loadDashboardData().catch(() => {});
     });
 
@@ -668,9 +683,21 @@ export function DashboardScreen({
   }, [pendingOrder, pendingTimeLeft, handleAutoDecline]);
 
   // Accept Pending Order (within 5 minutes) -> sets status to 'In Transit'
-  const handleAcceptPending = async () => {
-    if (!pendingOrder) return;
-    const orderToAccept = pendingOrder;
+  const handleAcceptPending = async (orderParam?: BackendOrder | any) => {
+    if (isAcceptingInProgressRef.current) return;
+    const isOrderObj =
+      orderParam &&
+      typeof orderParam === 'object' &&
+      ('_id' in orderParam || 'orderId' in orderParam);
+    const orderToAccept =
+      (isOrderObj ? (orderParam as BackendOrder) : null) ||
+      pendingOrderRef.current ||
+      pendingOrder;
+    if (!orderToAccept) return;
+
+    isAcceptingInProgressRef.current = true;
+    setOrderAccepting(true);
+
     const orderKey = orderToAccept._id || orderToAccept.orderId;
 
     // Immediately stop audio & dismiss modal optimistically so UI never freezes
@@ -678,11 +705,15 @@ export function DashboardScreen({
     orderPollingService.clearLatestPendingOrder().catch(() => {});
     orderPollingService.setAlertActive(false);
     setPendingOrder(null);
+    pendingOrderRef.current = null;
     setPendingTimeLeft(0);
-    setOrderAccepting(false);
 
-    if (Platform.OS === 'android') {
-      ToastAndroid.show('Order accepted! En route to site.', ToastAndroid.SHORT);
+    // Only show Toast once within 4 seconds (prevent duplicate / multi-trigger toast)
+    if (Date.now() - lastAcceptedToastTimeRef.current > 4000) {
+      lastAcceptedToastTimeRef.current = Date.now();
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Order accepted! En route to site.', ToastAndroid.SHORT);
+      }
     }
 
     try {
@@ -698,6 +729,8 @@ export function DashboardScreen({
     } catch (err: any) {
       console.warn('[DashboardScreen] Error accepting order:', err?.message);
     } finally {
+      setOrderAccepting(false);
+      isAcceptingInProgressRef.current = false;
       loadDashboardData().catch(() => {});
     }
   };
@@ -1009,7 +1042,7 @@ export function DashboardScreen({
                 styles.acceptButton,
                 isPendingExpired && styles.acceptButtonDisabled,
               ]}
-              onPress={handleAcceptPending}
+              onPress={() => handleAcceptPending()}
               disabled={isPendingExpired || orderAccepting || orderDeclining}
               loading={orderAccepting}
               loadingText="Accepting..."

@@ -4,11 +4,14 @@ import {
   Animated,
   Linking,
   Modal,
+  NativeModules,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  ToastAndroid,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -103,7 +106,7 @@ function mapBackendOrderToUI(bo: BackendOrder): OrderData {
   } else if (uiStatus === 'completed') {
     amountNote = bo.agentPayment?.status === 'Paid' ? 'Settled to Wallet' : 'Processing Settlement';
   } else {
-    amountNote = `Cancellation Fee: ₹${payout || 50}`;
+    amountNote = 'Order Cancelled';
   }
 
   const cleanId = bo.orderId || (bo._id ? `#KW-${bo._id.slice(-4).toUpperCase()}` : '#KW-9000');
@@ -181,6 +184,81 @@ export function OrdersScreen({
   // Diagnostic Spec / Invoice Sheet state
   const [detailsSheetVisible, setDetailsSheetVisible] = useState(false);
   const [selectedDetailsOrder, setSelectedDetailsOrder] = useState<OrderData | null>(null);
+  const [rawOrders, setRawOrders] = useState<BackendOrder[]>([]);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
+  const handleDownloadMonthlyPdf = async () => {
+    if (isDownloadingPdf) return;
+    setIsDownloadingPdf(true);
+
+    const now = new Date();
+    const monthName = now.toLocaleString('en-IN', { month: 'long', year: 'numeric' }); // e.g. "November 2026"
+
+    try {
+      showToast(`Generating ${monthName} PDF statement...`);
+
+      // Filter orders for the current calendar month
+      const currentMonthOrders = rawOrders.filter(o => {
+        const dateStr = o.scheduledDate || o.createdAt || o.completedAt || o.updatedAt;
+        if (!dateStr) return true;
+        try {
+          const d = new Date(dateStr);
+          return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+        } catch {
+          return true;
+        }
+      });
+
+      const ordersToExport =
+        currentMonthOrders.length > 0
+          ? currentMonthOrders
+          : rawOrders.length > 0
+          ? rawOrders
+          : orders.map(o => ({
+              orderId: o.id,
+              taskTitle: o.title,
+              status:
+                o.status === 'completed'
+                  ? 'Done'
+                  : o.status === 'cancelled'
+                  ? 'Canceled'
+                  : 'In Progress',
+              totalPrice: parseInt(o.amount.replace(/\D/g, ''), 10) || 450,
+              agentPayment: {
+                amount: parseInt(o.payoutAmount.replace(/\D/g, ''), 10) || 380,
+              },
+              location: { cluster: o.society, address: o.address },
+              scheduledDate: now.toISOString().slice(0, 10),
+            }));
+
+      const cleanPhone = (user?.phoneNumber || '').replace(/\D/g, '').slice(-10);
+      const partnerName = user?.displayName || 'Kwiqo Field Partner';
+
+      const mod = NativeModules.FilePickerModule;
+      if (Platform.OS === 'android' && mod?.generateMonthlyOrdersPdf) {
+        const res = await mod.generateMonthlyOrdersPdf(
+          monthName,
+          JSON.stringify(ordersToExport),
+          partnerName,
+          cleanPhone
+        );
+
+        const fileName =
+          res?.fileName || `Kwiqo_Orders_${monthName.replace(/\s+/g, '_')}.pdf`;
+        if (Platform.OS === 'android') {
+          ToastAndroid.show(`Statement downloaded: ${fileName}`, ToastAndroid.LONG);
+        }
+        showToast(`Downloaded: ${fileName}`);
+      } else {
+        showToast(`${monthName} statement generated (${ordersToExport.length} orders)`);
+      }
+    } catch (err: any) {
+      console.warn('[OrdersScreen] Error generating PDF:', err?.message);
+      showToast('Could not generate PDF statement');
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -223,6 +301,7 @@ export function OrdersScreen({
             (o.agentName && user?.displayName && o.agentName.toLowerCase() === user.displayName.toLowerCase())
         );
         const listToUse = userOrders.length > 0 ? userOrders : (agentIdentifier ? [] : response.data);
+        setRawOrders(listToUse);
         const mapped = listToUse.map(mapBackendOrderToUI);
         cachedOrdersData = mapped;
         setOrders(mapped);
@@ -420,19 +499,15 @@ export function OrdersScreen({
             <View style={styles.statementButtonRow}>
               <GradientButton
                 style={styles.downloadPdfButton}
-                onPress={() => showToast('Downloading October PDF statement...')}
+                onPress={handleDownloadMonthlyPdf}
+                loading={isDownloadingPdf}
+                loadingText="Downloading PDF..."
                 activeOpacity={0.85}>
                 <Text style={styles.pdfButtonIcon}>📥</Text>
-                <Text style={styles.downloadPdfText}>Download PDF</Text>
+                <Text style={styles.downloadPdfText}>
+                  Download {new Date().toLocaleString('en-IN', { month: 'short' })} PDF Statement
+                </Text>
               </GradientButton>
-
-              <TouchableOpacity
-                style={styles.exportExcelButton}
-                onPress={() => showToast('Generating Excel (.xlsx) statement...')}
-                activeOpacity={0.85}>
-                <Text style={styles.excelButtonIcon}>📊</Text>
-                <Text style={styles.exportExcelText}>Export Excel</Text>
-              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -801,9 +876,6 @@ export function OrdersScreen({
                         <Text style={styles.cancelledAmountText}>
                           {order.originalAmount || order.amount}
                         </Text>
-                        <Text style={styles.cancellationFeeText} numberOfLines={1}>
-                          {order.amountNote}
-                        </Text>
                       </View>
                     </View>
 
@@ -992,7 +1064,7 @@ export function OrdersScreen({
                   <View style={styles.sheetRowBetween}>
                     <Text style={styles.sheetItemLabel}>Partner Wallet Payout</Text>
                     <Text style={styles.sheetPayoutHighlight}>
-                      {selectedDetailsOrder?.payoutAmount}
+                      {selectedDetailsOrder?.status === 'cancelled' ? '₹0' : selectedDetailsOrder?.payoutAmount}
                     </Text>
                   </View>
                   <View style={styles.sheetRowBetween}>
@@ -1003,8 +1075,8 @@ export function OrdersScreen({
                   </View>
                   <View style={styles.sheetRowBetween}>
                     <Text style={styles.sheetItemLabel}>Settlement Status</Text>
-                    <Text style={styles.sheetStatusDone}>
-                      {selectedDetailsOrder?.amountNote}
+                    <Text style={selectedDetailsOrder?.status === 'cancelled' ? styles.sheetStatusCancelled : styles.sheetStatusDone}>
+                      {selectedDetailsOrder?.status === 'cancelled' ? 'Order Cancelled' : selectedDetailsOrder?.amountNote}
                     </Text>
                   </View>
                   {selectedDetailsOrder?.transactionId && (
@@ -1305,16 +1377,15 @@ const styles = StyleSheet.create({
   },
   statementButtonRow: {
     flexDirection: 'row',
-    gap: 10,
   },
   downloadPdfButton: {
     flex: 1,
-    height: 42,
+    height: 44,
     borderRadius: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -1327,32 +1398,8 @@ const styles = StyleSheet.create({
   downloadPdfText: {
     fontFamily: typography.fontFamily,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.white,
-  },
-  exportExcelButton: {
-    flex: 1,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: colors.surfaceContainerLowest,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  excelButtonIcon: {
-    fontSize: 16,
-  },
-  exportExcelText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.onSurface,
   },
 
   // Search & Filter
@@ -2385,6 +2432,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.tertiary,
+  },
+  sheetStatusCancelled: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.error,
   },
   sheetMonoText: {
     fontFamily: typography.fontFamily,

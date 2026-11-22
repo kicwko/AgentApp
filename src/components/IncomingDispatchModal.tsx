@@ -114,46 +114,80 @@ export function IncomingDispatchModal({
     return null;
   }
 
-  // Format countdown mm:ss
-  const mins = Math.floor(Math.max(0, timeLeftSeconds) / 60);
-  const secs = Math.max(0, timeLeftSeconds) % 60;
+  // Format countdown mm:ss (defensive against NaN)
+  const validSecs =
+    typeof timeLeftSeconds === 'number' && !isNaN(timeLeftSeconds)
+      ? Math.max(0, timeLeftSeconds)
+      : 300;
+  const mins = Math.floor(validSecs / 60);
+  const secs = Math.floor(validSecs % 60);
   const timeFormatted = `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
 
-  // Job Meta
-  const taskTitle = order.taskTitle || 'Kitchen Pipe Leakage';
-  const categoryTag =
+  // Safely extract Category Tag (defensive against object, array, or undefined from backend API)
+  let categoryTag = 'Service Dispatch';
+  const rawCat =
+    (order as any).taskCategoryNames ||
+    (order as any).category ||
     (order as any).serviceCategory ||
     (order as any).serviceTitle ||
     (order as any).subCategory ||
-    (order as any).category ||
-    'Plumbing & Leakage';
+    order.taskTitle ||
+    'Service Dispatch';
 
-  const locationText =
-    order.location?.address ||
-    [
-      order.location?.flat,
-      order.location?.street,
-      order.location?.cluster,
-      order.location?.city,
-    ]
-      .filter(Boolean)
-      .join(', ') ||
-    'Tower B, Flat 804 • Palm Heights';
+  if (Array.isArray(rawCat) && rawCat.length > 0) {
+    categoryTag = String(rawCat[0] || 'Service Dispatch');
+  } else if (typeof rawCat === 'object' && rawCat !== null) {
+    categoryTag = String(
+      rawCat.name || rawCat.title || rawCat.category || 'Service Dispatch'
+    );
+  } else if (typeof rawCat === 'string' && rawCat.trim().length > 0) {
+    categoryTag = rawCat.trim();
+  }
 
-  const payout =
+  // Job Title (defensive against non-strings)
+  const taskTitle =
+    typeof order.taskTitle === 'string' && order.taskTitle.trim().length > 0
+      ? order.taskTitle.trim()
+      : categoryTag;
+
+  // Location text
+  let locationText = 'Prestige Falcon City, Bengaluru';
+  const rawLoc = (order as any).location;
+  if (typeof rawLoc === 'string' && rawLoc.trim().length > 0) {
+    locationText = rawLoc.trim();
+  } else if (rawLoc && typeof rawLoc === 'object') {
+    locationText =
+      rawLoc.address ||
+      [
+        rawLoc.flat,
+        rawLoc.street,
+        rawLoc.cluster,
+        rawLoc.city,
+      ]
+        .filter(Boolean)
+        .join(', ') ||
+      'Prestige Falcon City, Bengaluru';
+  }
+
+  // Net Payout
+  const rawPayout =
     order.agentPayment?.amount ||
     Math.round((order.totalPrice || 0) * 0.85) ||
     order.totalPrice ||
     450;
+  const payout =
+    typeof rawPayout === 'number' && !isNaN(rawPayout) ? Math.round(rawPayout) : 450;
 
-  // Category Icon picker
-  const getCategoryGlyph = (cat: string) => {
+  // Category Icon picker (guaranteed string safe)
+  const getCategoryGlyph = (cat?: any) => {
+    if (!cat || typeof cat !== 'string') return '🛠️';
     const lower = cat.toLowerCase();
-    if (lower.includes('plumb') || lower.includes('pipe') || lower.includes('leak')) return '🔧';
-    if (lower.includes('elect') || lower.includes('wire') || lower.includes('light')) return '⚡';
-    if (lower.includes('clean') || lower.includes('maid')) return '✨';
-    if (lower.includes('paint')) return '🎨';
-    if (lower.includes('carpenter') || lower.includes('wood')) return '🪚';
+    if (lower.includes('plumb') || lower.includes('pipe') || lower.includes('leak') || lower.includes('drain')) return '🔧';
+    if (lower.includes('elect') || lower.includes('wire') || lower.includes('light') || lower.includes('switch')) return '⚡';
+    if (lower.includes('clean') || lower.includes('maid') || lower.includes('sweep')) return '✨';
+    if (lower.includes('paint') || lower.includes('color')) return '🎨';
+    if (lower.includes('carpenter') || lower.includes('wood') || lower.includes('furniture')) return '🪚';
+    if (lower.includes('appliance') || lower.includes('ac') || lower.includes('repair')) return '⚙️';
     return '🛠️';
   };
 
@@ -204,21 +238,22 @@ export function IncomingDispatchModal({
 
   return (
     <Modal
-      visible={visible}
+      visible={Boolean(visible && order)}
       animationType="slide"
-      transparent={false}
+      transparent={true}
       statusBarTranslucent
       onRequestClose={() => handlePressDecline()}>
       <StatusBar barStyle="dark-content" />
-      <LinearGradient
-        colors={['#f8fafc', '#f1f5f9', '#e8edf5']}
-        style={[
-          styles.container,
-          {
-            paddingTop: Math.max(insets.top, 24) + 8,
-            paddingBottom: Math.max(insets.bottom, 16) + 12,
-          },
-        ]}>
+      <View style={styles.modalFullBackdrop}>
+        <LinearGradient
+          colors={['#f8fafc', '#f1f5f9', '#e8edf5']}
+          style={[
+            styles.container,
+            {
+              paddingTop: Math.max(insets.top, 24) + 8,
+              paddingBottom: Math.max(insets.bottom, 16) + 12,
+            },
+          ]}>
         {/* Soft Ambient Background Glows */}
         <View style={styles.ambientGlowTop} pointerEvents="none" />
         <View style={styles.ambientGlowBottom} pointerEvents="none" />
@@ -367,16 +402,26 @@ export function IncomingDispatchModal({
           </Text>
         </View>
       </LinearGradient>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  modalFullBackdrop: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#f8fafc',
+  },
   container: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
+    backgroundColor: '#f8fafc',
   },
   ambientGlowTop: {
     position: 'absolute',

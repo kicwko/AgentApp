@@ -62,6 +62,8 @@ export function HomeScreen({ user, onSignOut }: Props) {
     const cleanPhone = rawPhone.replace(/\D/g, '').slice(-10);
     const userId = dbUser?._id || dbUser?.agentId || user?.uid || cleanPhone;
 
+    orderPollingService.setOnDuty(isOnDuty);
+
     if (isOnDuty && (cleanPhone || userId)) {
       if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
         PermissionsAndroid.check('android.permission.POST_NOTIFICATIONS' as any)
@@ -159,7 +161,12 @@ export function HomeScreen({ user, onSignOut }: Props) {
             activeTab === 'dashboard' ? styles.tabVisible : styles.tabHidden,
           ]}
           pointerEvents={activeTab === 'dashboard' ? 'auto' : 'none'}>
-          <DashboardScreen user={user} isActive={activeTab === 'dashboard'} />
+          <DashboardScreen
+            user={user}
+            isActive={activeTab === 'dashboard'}
+            isOnDuty={isOnDuty}
+            onSwitchToDashboard={() => setActiveTab('dashboard')}
+          />
         </View>
         <View
           style={[
@@ -216,8 +223,8 @@ const styles = StyleSheet.create({
     opacity: 1,
   },
   tabHidden: {
-    display: 'none',
-    zIndex: 0,
     opacity: 0,
+    zIndex: 0,
+    top: -99999,
   },
 });
