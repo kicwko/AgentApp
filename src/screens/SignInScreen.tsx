@@ -516,23 +516,6 @@ export function SignInScreen({ onBack, onAccountStatus, onLoginSuccess }: Props)
           By signing in, you agree to Kweecko's Partner Terms of Service and Privacy Policy.
         </Text>
       </ScrollView>
-
-      {/* Loading Overlay */}
-      {(sendingOtp || verifyingOtp) && (
-        <View style={styles.loadingOverlay}>
-          <View style={styles.loadingOverlayCard}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingOverlayTitle}>
-              {sendingOtp ? 'Sending Verification OTP...' : 'Verifying Code & Signing In...'}
-            </Text>
-            <Text style={styles.loadingOverlaySubtitle}>
-              {sendingOtp
-                ? 'Please wait while we send the verification code to your mobile number.'
-                : 'Please wait while we verify your account.'}
-            </Text>
-          </View>
-        </View>
-      )}
     </KeyboardAvoidingView>
   );
 }

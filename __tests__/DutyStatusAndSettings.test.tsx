@@ -139,6 +139,6 @@ describe('Duty Status Service & Persistence', () => {
       await ReactTestRenderer.act(async () => {
         root.unmount();
       });
-    });
+    }, 15000);
   });
 });

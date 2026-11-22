@@ -76,11 +76,21 @@ class OrderPollingService : Service() {
 
     private val alertAutoExpiryRunnable = Runnable {
         Log.d(TAG, "5-minute alert auto-expiry reached. Resetting alert active flag and stopping sound.")
+        val expiredOrderId = lastNotifiedOrderId
         isOrderAlertActive = false
         lastNotifiedOrderId = null
         OrderRingtoneManager.stopRinging()
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         manager?.cancel(ORDER_ALERT_NOTIFICATION_ID)
+
+        if (!expiredOrderId.isNullOrBlank()) {
+            NotificationActionReceiver.updateOrderStatusInBackground(
+                applicationContext,
+                expiredOrderId,
+                "Canceled",
+                "Auto-declined: 5-minute timeout reached"
+            )
+        }
     }
 
     fun startAlertAutoExpiry() {

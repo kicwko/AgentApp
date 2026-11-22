@@ -150,9 +150,18 @@ function mapBackendOrderToUI(bo: BackendOrder): OrderData {
   };
 }
 
-export function OrdersScreen({ user }: { user?: User } = {}) {
-  const [orders, setOrders] = useState<OrderData[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+// In-memory persistent cache for instant tab restoration without blank loading states
+let cachedOrdersData: OrderData[] = [];
+
+export function OrdersScreen({
+  user,
+  isActive = true,
+}: {
+  user?: User;
+  isActive?: boolean;
+} = {}) {
+  const [orders, setOrders] = useState<OrderData[]>(cachedOrdersData);
+  const [loading, setLoading] = useState<boolean>(cachedOrdersData.length === 0);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [isLiveConnected, setIsLiveConnected] = useState<boolean>(false);
 
@@ -215,18 +224,23 @@ export function OrdersScreen({ user }: { user?: User } = {}) {
         );
         const listToUse = userOrders.length > 0 ? userOrders : (agentIdentifier ? [] : response.data);
         const mapped = listToUse.map(mapBackendOrderToUI);
+        cachedOrdersData = mapped;
         setOrders(mapped);
         setIsLiveConnected(true);
         if (silent) {
           showToast(mapped.length > 0 ? `Synced ${mapped.length} tasks` : 'Task feed updated');
         }
       } else {
-        setOrders([]);
+        if (cachedOrdersData.length === 0) {
+          setOrders([]);
+        }
         setIsLiveConnected(true);
       }
     } catch (err: any) {
       console.warn('[OrdersScreen] Could not fetch real orders:', err.message);
-      setOrders([]);
+      if (cachedOrdersData.length === 0) {
+        setOrders([]);
+      }
       setIsLiveConnected(false);
       if (silent) {
         showToast('Running on live offline mode');
@@ -238,8 +252,10 @@ export function OrdersScreen({ user }: { user?: User } = {}) {
   };
 
   useEffect(() => {
-    fetchRealOrders();
-  }, [user]);
+    if (isActive) {
+      fetchRealOrders(cachedOrdersData.length > 0);
+    }
+  }, [user, isActive]);
 
   const REFRESH_COOLDOWN_MS = 30 * 1000;
   const lastRefreshTimeRef = useRef<number>(0);

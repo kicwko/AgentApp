@@ -26,6 +26,7 @@ type Props = {
   isOnDuty?: boolean;
   onToggleDuty?: () => void;
   onSignOut?: () => void;
+  isActive?: boolean;
 };
 
 type ActiveModalType =

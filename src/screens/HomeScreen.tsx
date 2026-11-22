@@ -151,18 +151,38 @@ export function HomeScreen({ user, onSignOut }: Props) {
         onSignOut={onSignOut}
       />
 
-      {/* Main Tab Content */}
+      {/* Main Tab Content - Kept mounted so page DOM and scroll are never removed on tab switch */}
       <View style={styles.body}>
-        {activeTab === 'dashboard' && <DashboardScreen user={user} />}
-        {activeTab === 'orders' && <OrdersScreen user={user} />}
-        {activeTab === 'settings' && (
+        <View
+          style={[
+            styles.tabContainer,
+            activeTab === 'dashboard' ? styles.tabVisible : styles.tabHidden,
+          ]}
+          pointerEvents={activeTab === 'dashboard' ? 'auto' : 'none'}>
+          <DashboardScreen user={user} isActive={activeTab === 'dashboard'} />
+        </View>
+        <View
+          style={[
+            styles.tabContainer,
+            activeTab === 'orders' ? styles.tabVisible : styles.tabHidden,
+          ]}
+          pointerEvents={activeTab === 'orders' ? 'auto' : 'none'}>
+          <OrdersScreen user={user} isActive={activeTab === 'orders'} />
+        </View>
+        <View
+          style={[
+            styles.tabContainer,
+            activeTab === 'settings' ? styles.tabVisible : styles.tabHidden,
+          ]}
+          pointerEvents={activeTab === 'settings' ? 'auto' : 'none'}>
           <SettingsScreen
             user={user}
             isOnDuty={isOnDuty}
             onToggleDuty={handleToggleDuty}
             onSignOut={onSignOut}
+            isActive={activeTab === 'settings'}
           />
-        )}
+        </View>
       </View>
 
       {/* Common App Footer / Bottom Navigation */}
@@ -181,5 +201,23 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
+    position: 'relative',
+  },
+  tabContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  tabVisible: {
+    display: 'flex',
+    zIndex: 1,
+    opacity: 1,
+  },
+  tabHidden: {
+    display: 'none',
+    zIndex: 0,
+    opacity: 0,
   },
 });

@@ -217,7 +217,28 @@ function calculateDashboardMetrics(orders: BackendOrder[]) {
   };
 }
 
-export function DashboardScreen({ user }: { user?: User } = {}) {
+// In-memory persistent cache for instant tab restoration across screen switches
+let cachedInProgressOrders: BackendOrder[] = [];
+let cachedRecentOrders: BackendOrder[] = [];
+let cachedDashboardStats = {
+  todayVisitsText: '0 / 0',
+  onTimeGateText: '-',
+  weeklyEarnText: '₹0',
+  todayTotalEarnings: '₹0',
+  todayCompletedJobs: '0 completed jobs',
+  monthTotalEarnings: '₹0',
+  performanceRating: '-',
+  ordersQuarterCount: '0 orders total',
+  completionRate: '100%',
+};
+
+export function DashboardScreen({
+  user,
+  isActive = true,
+}: {
+  user?: User;
+  isActive?: boolean;
+} = {}) {
   const [pendingOrder, setPendingOrder] = useState<BackendOrder | null>(null);
   const pendingOrderRef = useRef<BackendOrder | null>(null);
   pendingOrderRef.current = pendingOrder;
@@ -226,24 +247,24 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   const [orderAccepting, setOrderAccepting] = useState(false);
   const [orderDeclining, setOrderDeclining] = useState(false);
 
-  const [inProgressOrders, setInProgressOrders] = useState<BackendOrder[]>([]);
+  const [inProgressOrders, setInProgressOrders] = useState<BackendOrder[]>(cachedInProgressOrders);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
-  const [recentOrders, setRecentOrders] = useState<BackendOrder[]>([]);
+  const [recentOrders, setRecentOrders] = useState<BackendOrder[]>(cachedRecentOrders);
 
   const [userLocation, setUserLocation] = useState<{
     latitude?: number | null;
     longitude?: number | null;
   } | null>(null);
 
-  const [todayVisitsText, setTodayVisitsText] = useState('0 / 0');
-  const [onTimeGateText, setOnTimeGateText] = useState('-');
-  const [weeklyEarnText, setWeeklyEarnText] = useState('₹0');
-  const [todayTotalEarnings, setTodayTotalEarnings] = useState('₹0');
-  const [todayCompletedJobs, setTodayCompletedJobs] = useState('0 completed jobs');
-  const [monthTotalEarnings, setMonthTotalEarnings] = useState('₹0');
-  const [performanceRating, setPerformanceRating] = useState('-');
-  const [ordersQuarterCount, setOrdersQuarterCount] = useState('0 orders total');
-  const [completionRate, setCompletionRate] = useState('100%');
+  const [todayVisitsText, setTodayVisitsText] = useState(cachedDashboardStats.todayVisitsText);
+  const [onTimeGateText, setOnTimeGateText] = useState(cachedDashboardStats.onTimeGateText);
+  const [weeklyEarnText, setWeeklyEarnText] = useState(cachedDashboardStats.weeklyEarnText);
+  const [todayTotalEarnings, setTodayTotalEarnings] = useState(cachedDashboardStats.todayTotalEarnings);
+  const [todayCompletedJobs, setTodayCompletedJobs] = useState(cachedDashboardStats.todayCompletedJobs);
+  const [monthTotalEarnings, setMonthTotalEarnings] = useState(cachedDashboardStats.monthTotalEarnings);
+  const [performanceRating, setPerformanceRating] = useState(cachedDashboardStats.performanceRating);
+  const [ordersQuarterCount, setOrdersQuarterCount] = useState(cachedDashboardStats.ordersQuarterCount);
+  const [completionRate, setCompletionRate] = useState(cachedDashboardStats.completionRate);
   const [refreshing, setRefreshing] = useState(false);
 
   const getAgentPhone = useCallback(() => {
@@ -327,6 +348,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         const activeInProgress = finalOrders.filter(
           o => o.status === 'In Transit' || o.status === 'In Progress'
         );
+        cachedInProgressOrders = activeInProgress;
         setInProgressOrders(activeInProgress);
 
         // Check for any assigned pending orders
@@ -347,12 +369,24 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         const completedFeed = finalOrders
           .filter(o => o.status === 'Done' || o.status === 'Canceled')
           .slice(0, 5);
-        setRecentOrders(
-          completedFeed.length > 0 ? completedFeed : finalOrders.slice(0, 5)
-        );
+        const finalRecent =
+          completedFeed.length > 0 ? completedFeed : finalOrders.slice(0, 5);
+        cachedRecentOrders = finalRecent;
+        setRecentOrders(finalRecent);
 
         // Calculate and update metrics
         const metrics = calculateDashboardMetrics(finalOrders);
+        cachedDashboardStats = {
+          todayVisitsText: metrics.visitsText,
+          onTimeGateText: metrics.gateText,
+          weeklyEarnText: metrics.earnText,
+          todayTotalEarnings: metrics.todayTotalText,
+          todayCompletedJobs: metrics.todayCompletedJobsText,
+          monthTotalEarnings: metrics.monthTotalText,
+          performanceRating: metrics.ratingText,
+          ordersQuarterCount: metrics.ordersQuarterText,
+          completionRate: metrics.completionRateText,
+        };
         setTodayVisitsText(metrics.visitsText);
         setOnTimeGateText(metrics.gateText);
         setWeeklyEarnText(metrics.earnText);
@@ -367,6 +401,13 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
       console.warn('[DashboardScreen] Could not load live orders:', err?.message);
     }
   }, [getAgentPhone, getAgentId, user, pendingOrder]);
+
+  // Refresh dashboard data when tab is switched to active
+  useEffect(() => {
+    if (isActive) {
+      loadDashboardData().catch(() => {});
+    }
+  }, [isActive, loadDashboardData]);
 
   // Auto-decline handler when 5 minutes expire
   const handleAutoDecline = useCallback(
@@ -386,7 +427,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
           orderService.updateOrderStatus(orderKey, {
             status: 'Canceled',
             reason: 'Expired - not accepted within 5 minutes',
-            canceledBy: 'system',
+            canceledBy: 'Agent',
           }),
           timeoutPromise,
         ]);
@@ -643,7 +684,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         orderService.updateOrderStatus(orderKey, {
           status: 'Canceled',
           reason: 'Declined by agent',
-          canceledBy: 'agent',
+          canceledBy: 'Agent',
         }),
         timeoutPromise,
       ]);
@@ -1028,7 +1069,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
                           <>
                             <Text style={styles.advanceButtonIcon}>✓</Text>
                             <Text style={styles.completeButtonText}>
-                              Complete Task & Collect
+                              Complete Task
                             </Text>
                           </>
                         )}
