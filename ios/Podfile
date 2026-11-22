@@ -43,6 +43,19 @@ target 'AgentApp' do
         if deployment_target && deployment_target.to_f < min_ios_version_supported.to_f
           config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = min_ios_version_supported
         end
+
+        # react-native-image-picker's podspec doesn't declare MobileCoreServices
+        # or UniformTypeIdentifiers as framework dependencies, even though it
+        # uses both legacy UTType*/kUTType* symbols (MobileCoreServices) and
+        # modern UTTypeImage etc. (UniformTypeIdentifiers). Xcode's automatic
+        # linker doesn't pick these up, so the link step fails with
+        # "Undefined symbols for architecture arm64" unless force-linked here.
+        if target.name == 'react-native-image-picker'
+          ldflags = config.build_settings['OTHER_LDFLAGS'] || ['$(inherited)']
+          ldflags = [ldflags] unless ldflags.is_a?(Array)
+          config.build_settings['OTHER_LDFLAGS'] =
+            ldflags + ['-framework', 'MobileCoreServices', '-framework', 'UniformTypeIdentifiers']
+        end
       end
     end
   end

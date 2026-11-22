@@ -205,19 +205,28 @@ export function GradientButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled: disabled || loading }}>
-      {NativeLinearGradient ? (
-        <NativeLinearGradient
-          colors={[...gradientColors]}
-          useAngle={useAngle}
-          angle={angle}
-          angleCenter={gradients.angleCenter}
-          start={start}
-          end={end}
-          style={[gradientInnerStyle, contentStyle]}>
-          {innerContent}
-        </NativeLinearGradient>
-      ) : (
-        <View style={[gradientInnerStyle, styles.gradientFallbackContainer, contentStyle]}>
+      {/*
+        The gradient itself is always rendered as an absolutely-filled
+        background layer, with `innerContent` as a plain sibling on top --
+        never as a child of NativeLinearGradient. react-native-linear-gradient
+        2.x's native view doesn't render children correctly under React
+        Native's New Architecture (Fabric) on iOS (children end up missing or
+        mis-positioned); Fabric support only landed in its 3.0 release. Using
+        it strictly as a background (no children) sidesteps that bug on every
+        platform/architecture without needing to upgrade the native module.
+      */}
+      <View style={[gradientInnerStyle, styles.gradientFallbackContainer, contentStyle]}>
+        {NativeLinearGradient ? (
+          <NativeLinearGradient
+            colors={[...gradientColors]}
+            useAngle={useAngle}
+            angle={angle}
+            angleCenter={gradients.angleCenter}
+            start={start}
+            end={end}
+            style={[StyleSheet.absoluteFill, { borderRadius: resolvedRadius }]}
+          />
+        ) : (
           <Image
             source={primaryGradientImage}
             style={[
@@ -226,9 +235,9 @@ export function GradientButton({
             ]}
             resizeMode="cover"
           />
-          {innerContent}
-        </View>
-      )}
+        )}
+        {innerContent}
+      </View>
     </TouchableOpacity>
   );
 }
