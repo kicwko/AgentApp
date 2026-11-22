@@ -232,6 +232,25 @@ let cachedDashboardStats = {
   completionRate: '100%',
 };
 
+/**
+ * Clear in-memory cached dashboard stats and orders (called on user sign out)
+ */
+export function clearDashboardCache(): void {
+  cachedInProgressOrders = [];
+  cachedRecentOrders = [];
+  cachedDashboardStats = {
+    todayVisitsText: '0 / 0',
+    onTimeGateText: '-',
+    weeklyEarnText: '₹0',
+    todayTotalEarnings: '₹0',
+    todayCompletedJobs: '0 completed jobs',
+    monthTotalEarnings: '₹0',
+    performanceRating: '-',
+    ordersQuarterCount: '0 orders total',
+    completionRate: '100%',
+  };
+}
+
 export function DashboardScreen({
   user,
   isActive = true,

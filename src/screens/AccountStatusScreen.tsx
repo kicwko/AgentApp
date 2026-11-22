@@ -804,8 +804,7 @@ export function AccountStatusScreen({
       {/* Fixed Common App Header at Top */}
       <AppHeader
         showDutyToggle={false}
-        onSignOut={onSignOut}
-        onPressProfile={onSignOut}
+        showProfile={false}
       />
 
       <KeyboardAvoidingView
@@ -993,6 +992,15 @@ export function AccountStatusScreen({
               style={styles.refreshStatusButton}
               textStyle={styles.primaryCtaText}
             />
+
+            <TouchableOpacity
+              style={styles.switchAccountBtn}
+              onPress={onSignOut}
+              activeOpacity={0.8}>
+              <Text style={[styles.switchAccountBtnText, { color: theme.textMuted }]}>
+                Sign out of session
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : (
           // =================== PENDING VIEW: 3 DOCUMENTS FORM ===================
@@ -2300,6 +2308,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.3,
     color: '#FFFFFF',
+  },
+  switchAccountBtn: {
+    marginTop: 14,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  switchAccountBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   primaryCtaButton: {
     borderRadius: 999,

@@ -102,21 +102,31 @@ export const sessionService = {
     }
   },
 
-  /** Clear all session data on explicit user sign-out */
+  /** Clear all session data and all persistent caches on explicit user sign-out */
   clearSession: async (): Promise<void> => {
     try {
-      await Promise.all([
-        AsyncStorage.removeItem(STORAGE_KEYS.USER),
-        AsyncStorage.removeItem(STORAGE_KEYS.ACCOUNT_STATUS),
-        AsyncStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN),
-      ]);
-      apiClient.setUserSession({
-        phone: null,
-        userId: null,
-        token: null,
-      });
+      await AsyncStorage.clear();
+      apiClient.clearSession();
     } catch (e) {
       console.warn('[sessionService] Failed to clear session:', e);
+      try {
+        await Promise.all([
+          AsyncStorage.removeItem(STORAGE_KEYS.USER),
+          AsyncStorage.removeItem(STORAGE_KEYS.ACCOUNT_STATUS),
+          AsyncStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN),
+        ]);
+        apiClient.clearSession();
+      } catch {}
+    }
+  },
+
+  /** Alias to wipe all application caches */
+  clearAllCaches: async (): Promise<void> => {
+    try {
+      await AsyncStorage.clear();
+      apiClient.clearSession();
+    } catch (e) {
+      console.warn('[sessionService] Failed to clear all caches:', e);
     }
   },
 };

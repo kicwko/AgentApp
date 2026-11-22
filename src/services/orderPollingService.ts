@@ -436,6 +436,22 @@ class OrderPollingServiceManager {
     return true;
   }
 
+  /**
+   * Reset all polling state, listeners, cached orders, and stop polling on sign out.
+   */
+  public async resetAll(): Promise<void> {
+    try {
+      await this.stop();
+      await this.clearLatestPendingOrder();
+    } catch {}
+    this.declinedOrderIds.clear();
+    this.pendingOrderSubscribers.clear();
+    this.pollResponseSubscribers.clear();
+    this.acceptedActionSubscribers.clear();
+    this.declinedActionSubscribers.clear();
+    this.currentConfig = {};
+  }
+
   public getIsRunning(): boolean {
     return this.isRunning;
   }

@@ -99,6 +99,12 @@ class ApiClient {
     this.setUserSession(session);
   }
 
+  public clearSession() {
+    this.authToken = null;
+    this.userPhone = null;
+    this.userId = null;
+  }
+
   public getUserPhone(): string | null {
     return this.userPhone;
   }

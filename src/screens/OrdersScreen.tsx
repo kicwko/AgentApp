@@ -156,6 +156,13 @@ function mapBackendOrderToUI(bo: BackendOrder): OrderData {
 // In-memory persistent cache for instant tab restoration without blank loading states
 let cachedOrdersData: OrderData[] = [];
 
+/**
+ * Clear in-memory cached orders (called on user sign out)
+ */
+export function clearOrdersCache(): void {
+  cachedOrdersData = [];
+}
+
 export function OrdersScreen({
   user,
   isActive = true,

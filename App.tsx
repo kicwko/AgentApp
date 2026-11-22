@@ -19,10 +19,36 @@ import { signOutUser, subscribeToAuthState, type User } from './src/services/fir
 import { sessionService } from './src/services/sessionService';
 import { locationService } from './src/services/locationService';
 import { userService } from './src/services/userService';
+import { orderPollingService } from './src/services/orderPollingService';
+import { clearOrdersCache } from './src/screens/OrdersScreen';
+import { clearDashboardCache } from './src/screens/DashboardScreen';
 import apiClient from './src/services/apiClient';
 import { colors } from './src/theme/colors';
 
 type AuthScreen = 'welcome' | 'signin' | 'register';
+
+/**
+ * Global helper to wipe all local application storage, in-memory caches,
+ * background polling tasks, and session tokens upon user sign-off.
+ */
+export async function clearAllAppDataAndCaches(): Promise<void> {
+  try {
+    await orderPollingService.resetAll();
+  } catch (e) {
+    console.warn('[App] Polling reset error:', e);
+  }
+  try {
+    clearOrdersCache();
+    clearDashboardCache();
+  } catch (e) {
+    console.warn('[App] Cache clear error:', e);
+  }
+  try {
+    await sessionService.clearSession();
+  } catch (e) {
+    console.warn('[App] Session storage clear error:', e);
+  }
+}
 
 function App() {
   const [authScreen, setAuthScreen] = useState<AuthScreen>('welcome');
@@ -209,7 +235,7 @@ function App() {
     } catch (e) {
       console.warn('[App] SignOut notice:', e);
     }
-    await sessionService.clearSession();
+    await clearAllAppDataAndCaches();
     setUser(null);
     setAccountStatus(null);
     setAuthScreen('welcome');
