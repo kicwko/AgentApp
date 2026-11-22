@@ -26,6 +26,29 @@ export function HomeScreen({ user, onSignOut }: Props) {
   const [isOnDuty, setIsOnDuty] = useState(true);
   const [updatingDuty, setUpdatingDuty] = useState(false);
   const [dbUser, setDbUser] = useState<BackendUser | null>(null);
+  const [ordersBadgeCount, setOrdersBadgeCount] = useState<number>(0);
+
+  // Subscribe to real-time order polling to update badge count on Orders tab
+  useEffect(() => {
+    const unsubscribe = orderPollingService.subscribeToPollResponses((data: any) => {
+      if (data) {
+        const count =
+          data.totalPendingCount !== undefined
+            ? data.totalPendingCount
+            : data.newOrdersCount !== undefined
+            ? data.newOrdersCount
+            : (data.orders || []).filter(
+                (o: any) => o.status === 'Pending' || o.status === 'active'
+              ).length;
+        if (typeof count === 'number') {
+          setOrdersBadgeCount(count);
+        }
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Fetch initial duty status from database on mount
   useEffect(() => {
@@ -196,6 +219,7 @@ export function HomeScreen({ user, onSignOut }: Props) {
       <AppFooter
         activeTab={activeTab}
         onSelectTab={setActiveTab}
+        ordersBadgeCount={ordersBadgeCount}
       />
     </View>
   );
