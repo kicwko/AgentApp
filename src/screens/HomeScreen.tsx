@@ -88,6 +88,9 @@ export function HomeScreen({ user, onSignOut }: Props) {
           token: apiClient.getAuthToken() || `mock-jwt-${cleanPhone}`,
           baseUrl: API_CONFIG.baseUrl,
         })
+        .then(() => {
+          orderPollingService.requestBatteryOptimizationExemption().catch(() => {});
+        })
         .catch(err => {
           console.log('[HomeScreen] Notice starting polling service:', err);
         });

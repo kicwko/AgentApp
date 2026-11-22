@@ -14,6 +14,8 @@ import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -33,9 +35,12 @@ class OrderPollingService : Service() {
         const val TAG = "OrderPollingService"
         const val ACTION_START_POLLING = "com.kweecko.agentapp.START_POLLING"
         const val ACTION_STOP_POLLING = "com.kweecko.agentapp.STOP_POLLING"
+        const val ACTION_POLL_ALARM = "com.kweecko.agentapp.ACTION_POLL_ALARM"
 
         private const val ONGOING_NOTIFICATION_ID = 1001
         private const val ORDER_ALERT_NOTIFICATION_ID = 1002
+        private const val ALARM_REQUEST_CODE = 2001
+        private const val RESURRECTION_REQUEST_CODE = 9999
 
         const val CHANNEL_DUTY_ID = "kweecko_duty_channel"
         const val CHANNEL_ORDERS_ID = "kweecko_order_alerts_v6"
@@ -75,6 +80,27 @@ class OrderPollingService : Service() {
             stopPolling()
             stopSelf()
             return START_NOT_STICKY
+        }
+
+        if (action == ACTION_POLL_ALARM) {
+            // Heartbeat wake-up alarm executed even when phone is locked or deep in Doze mode
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val wakeLock = powerManager?.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "Kwiqo:OrderPollWakeLock"
+            )
+            wakeLock?.acquire(15000L) // 15-second partial wake lock to guarantee CPU stays active during network call
+            try {
+                executePollCycle()
+            } catch (t: Throwable) {
+                Log.w(TAG, "Error in alarm poll cycle: ${t.message}")
+            } finally {
+                scheduleNextAlarm(POLL_INTERVAL_SECONDS)
+                try {
+                    if (wakeLock?.isHeld == true) wakeLock.release()
+                } catch (_: Exception) {}
+            }
+            return START_STICKY
         }
 
         agentPhone = intent?.getStringExtra("phone") ?: agentPhone
@@ -216,6 +242,42 @@ class OrderPollingService : Service() {
             POLL_INTERVAL_SECONDS,
             TimeUnit.SECONDS
         )
+
+        // Schedule exact hardware wakeup alarm so Doze Mode / deep sleep cannot freeze polling
+        scheduleNextAlarm(POLL_INTERVAL_SECONDS)
+    }
+
+    private fun scheduleNextAlarm(delaySeconds: Long = POLL_INTERVAL_SECONDS) {
+        if (!isServiceRunning) return
+        try {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val alarmIntent = Intent(applicationContext, OrderPollingService::class.java).apply {
+                action = ACTION_POLL_ALARM
+            }
+            val pendingIntent = PendingIntent.getService(
+                applicationContext,
+                ALARM_REQUEST_CODE,
+                alarmIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val triggerTime = SystemClock.elapsedRealtime() + delaySeconds * 1000L
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerTime,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setExact(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerTime,
+                    pendingIntent
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error scheduling next alarm: ${e.message}")
+        }
     }
 
     private fun executePollCycle() {
@@ -525,7 +587,65 @@ class OrderPollingService : Service() {
         scheduler?.shutdownNow()
         scheduler = null
         isServiceRunning = false
+
+        try {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+            val alarmIntent = Intent(applicationContext, OrderPollingService::class.java).apply {
+                action = ACTION_POLL_ALARM
+            }
+            val pendingIntent = PendingIntent.getService(
+                applicationContext,
+                ALARM_REQUEST_CODE,
+                alarmIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager?.cancel(pendingIntent)
+        } catch (_: Exception) {}
+
+        OrderRingtoneManager.stopRinging()
         stopForeground(STOP_FOREGROUND_REMOVE)
+        try {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            manager?.cancel(ONGOING_NOTIFICATION_ID)
+            manager?.cancel(ORDER_ALERT_NOTIFICATION_ID)
+        } catch (_: Exception) {}
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.d(TAG, "onTaskRemoved: app closed/swiped from recents, scheduling service resurrection")
+        try {
+            val restartIntent = Intent(applicationContext, OrderPollingService::class.java).apply {
+                action = ACTION_START_POLLING
+                putExtra("phone", agentPhone)
+                putExtra("userId", agentUserId)
+                putExtra("token", authToken)
+                putExtra("baseUrl", apiBaseUrl)
+            }
+            val restartPendingIntent = PendingIntent.getService(
+                applicationContext,
+                RESURRECTION_REQUEST_CODE,
+                restartIntent,
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+            val triggerTime = SystemClock.elapsedRealtime() + 1000L
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager?.setExactAndAllowWhileIdle(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerTime,
+                    restartPendingIntent
+                )
+            } else {
+                alarmManager?.set(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerTime,
+                    restartPendingIntent
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed scheduling resurrection onTaskRemoved: ${e.message}")
+        }
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {

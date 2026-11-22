@@ -19,6 +19,7 @@ import { signOutUser, subscribeToAuthState, type User } from './src/services/fir
 import { sessionService } from './src/services/sessionService';
 import { locationService } from './src/services/locationService';
 import { userService } from './src/services/userService';
+import apiClient from './src/services/apiClient';
 import { colors } from './src/theme/colors';
 
 type AuthScreen = 'welcome' | 'signin' | 'register';
@@ -64,9 +65,21 @@ function App() {
         if (isMounted) {
           if (stored.user) {
             setUser(stored.user);
+            if (stored.user.phoneNumber) {
+              apiClient.setSession({
+                phone: stored.user.phoneNumber,
+                userId: stored.user.uid,
+              });
+            }
           }
           if (stored.accountStatus) {
             setAccountStatus(stored.accountStatus);
+            if (stored.accountStatus.phone) {
+              apiClient.setSession({
+                phone: stored.accountStatus.phone,
+                userId: stored.accountStatus.userId,
+              });
+            }
           }
         }
       } catch (err) {
@@ -98,6 +111,32 @@ function App() {
           email: nextUser.email,
           phone: nextUser.phoneNumber,
         });
+
+        if (profileRes?.data) {
+          const resolvedPhone =
+            profileRes.data.phone ||
+            (profileRes.data as any).mobile ||
+            nextUser.phoneNumber ||
+            '';
+          const resolvedUserId =
+            profileRes.data._id ||
+            profileRes.data.id ||
+            profileRes.data.agentId ||
+            nextUser.uid;
+
+          apiClient.setSession({
+            phone: resolvedPhone,
+            userId: resolvedUserId,
+            token: (profileRes.data as any).token || nextUser.uid,
+          });
+
+          if (resolvedPhone && !nextUser.phoneNumber) {
+            saveAndSetUser({
+              ...nextUser,
+              phoneNumber: resolvedPhone,
+            });
+          }
+        }
 
         const rawStatus = (profileRes?.status || profileRes?.data?.status || 'Active').trim();
         const isBlocked = profileRes?.isBlocked || rawStatus.toLowerCase() === 'blocked';

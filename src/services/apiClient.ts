@@ -91,6 +91,14 @@ class ApiClient {
     }
   }
 
+  public setSession(session: {
+    phone?: string | null;
+    userId?: string | null;
+    token?: string | null;
+  }) {
+    this.setUserSession(session);
+  }
+
   public getUserPhone(): string | null {
     return this.userPhone;
   }

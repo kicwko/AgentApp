@@ -21,6 +21,7 @@ import { orderService, type BackendOrder } from '../services/orderService';
 import { orderPollingService } from '../services/orderPollingService';
 import { locationService } from '../services/locationService';
 import { userService } from '../services/userService';
+import apiClient from '../services/apiClient';
 import type { User } from '../services/firebaseAuth';
 
 function calculateDashboardMetrics(orders: BackendOrder[]) {
@@ -242,9 +243,19 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
   const [completionRate, setCompletionRate] = useState('100%');
   const [refreshing, setRefreshing] = useState(false);
 
+  const getAgentPhone = useCallback(() => {
+    const raw = user?.phoneNumber || apiClient.getUserPhone() || '';
+    return raw.replace(/\D/g, '').slice(-10);
+  }, [user]);
+
+  const getAgentId = useCallback(() => {
+    const phone = getAgentPhone();
+    return phone || apiClient.getUserId() || user?.uid || '';
+  }, [getAgentPhone, user]);
+
   // Fetch agent profile location if available
   useEffect(() => {
-    const cleanPhone = (user?.phoneNumber || '').replace(/\D/g, '').slice(-10);
+    const cleanPhone = getAgentPhone();
     if (cleanPhone) {
       userService
         .fetchPartnerProfile({ phone: cleanPhone })
@@ -255,7 +266,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         })
         .catch(() => {});
     }
-  }, [user]);
+  }, [getAgentPhone]);
 
   // Retrieve current GPS / Cluster coordinates
   const getCoordinates = useCallback(async (): Promise<{ lat: number; lng: number }> => {
@@ -283,33 +294,31 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
 
   // Load all user orders from backend
   const loadDashboardData = useCallback(async () => {
-    const cleanPhone = (user?.phoneNumber || '').replace(/\D/g, '').slice(-10);
-    const agentId = cleanPhone || user?.email || user?.uid || '';
+    const cleanPhone = getAgentPhone();
+    const agentId = getAgentId();
 
     try {
       const res = await orderService.getOrders({
-        agentId: agentId || undefined,
+        agentId: cleanPhone || agentId || undefined,
         limit: 50,
       });
 
       if (res && res.success && Array.isArray(res.data)) {
         // Filter strictly to current user's assigned orders
-        const userOrders = res.data.filter(
-          o =>
-            (cleanPhone &&
-              (o.agentPhone?.includes(cleanPhone) ||
-                o.agentId?.includes(cleanPhone))) ||
-            (user?.email &&
-              (o.agentId?.includes(user.email) ||
-                o.customer?.email === user.email)) ||
-            (user?.uid && o.agentId?.includes(user.uid)) ||
-            (o.agentName &&
-              user?.displayName &&
-              o.agentName.toLowerCase() === user.displayName.toLowerCase())
-        );
+        const userOrders = res.data.filter(o => {
+          if (cleanPhone) {
+            const rawOPhone = (o.agentPhone || '').replace(/\D/g, '').slice(-10);
+            if (rawOPhone && rawOPhone === cleanPhone) return true;
+            if (o.agentId && o.agentId.includes(cleanPhone)) return true;
+          }
+          if (agentId && (o.agentId === agentId || o.agent === agentId)) return true;
+          if (user?.email && (o.agentId?.includes(user.email) || o.customer?.email === user.email)) return true;
+          if (user?.displayName && o.agentName && o.agentName.toLowerCase() === user.displayName.toLowerCase()) return true;
+          return false;
+        });
 
         const finalOrders =
-          userOrders.length > 0 ? userOrders : agentId ? [] : res.data;
+          userOrders.length > 0 ? userOrders : res.data;
 
         // Extract in-progress tasks: 'In Transit' | 'In Progress'
         const activeInProgress = finalOrders.filter(
@@ -325,9 +334,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
             : Date.now();
           const elapsedSec = Math.max(0, Math.floor((Date.now() - createdMs) / 1000));
           const remainSec = elapsedSec < 300 ? 300 - elapsedSec : 0;
-          if (remainSec <= 0) {
-            handleAutoDecline(foundPending);
-          } else {
+          if (remainSec > 0) {
             setPendingOrder(foundPending);
             setPendingTimeLeft(remainSec);
           }
@@ -356,7 +363,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     } catch (err: any) {
       console.warn('[DashboardScreen] Could not load live orders:', err?.message);
     }
-  }, [user, pendingOrder]);
+  }, [getAgentPhone, getAgentId, user, pendingOrder]);
 
   // Auto-decline handler when 5 minutes expire
   const handleAutoDecline = useCallback(
@@ -399,12 +406,12 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
     [loadDashboardData]
   );
 
-  // Poll API (/api/orders/poll) every 30 seconds
+  // Poll API (/api/orders/poll) every 15 seconds
   const pollNewOrders = useCallback(async () => {
     try {
       const coords = await getCoordinates();
-      const cleanPhone = (user?.phoneNumber || '').replace(/\D/g, '').slice(-10);
-      const userId = user?.uid || cleanPhone;
+      const cleanPhone = getAgentPhone();
+      const userId = getAgentId();
 
       const pollRes = await orderService.pollOrders({
         lat: coords.lat,
@@ -450,12 +457,12 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
         }
       }
 
-      // Also refresh dashboard data to update in-progress tasks
+      // Automatically refresh dashboard data to keep tasks and stats current without page refresh
       await loadDashboardData();
     } catch (err: any) {
-      console.warn('[DashboardScreen] Error during 30s poll:', err?.message);
+      console.warn('[DashboardScreen] Error during 15s poll:', err?.message);
     }
-  }, [getCoordinates, pendingOrder, handleAutoDecline, loadDashboardData]);
+  }, [getCoordinates, getAgentPhone, getAgentId, pendingOrder, handleAutoDecline, loadDashboardData]);
 
   // Setup 30-second polling interval & listen to background polling service events
   useEffect(() => {
@@ -476,6 +483,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
           setPendingTimeLeft(remainSec);
         }
       }
+      loadDashboardData().catch(() => {});
     });
 
     // Listen to incoming orders from native background service or foreground poll
@@ -501,6 +509,7 @@ export function DashboardScreen({ user }: { user?: User } = {}) {
           setPendingTimeLeft(remainSec);
         }
       }
+      loadDashboardData().catch(() => {});
     });
 
     const unsubscribePoll = orderPollingService.subscribeToPollResponses(() => {

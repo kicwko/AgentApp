@@ -7,10 +7,13 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
@@ -140,6 +143,44 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     @ReactMethod
     fun isRinging(promise: Promise) {
         promise.resolve(OrderRingtoneManager.isCurrentlyRinging())
+    }
+
+    @ReactMethod
+    fun requestBatteryOptimizationExemption(promise: Promise) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val powerManager = reactContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                val packageName = reactContext.packageName
+                if (powerManager != null && !powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    reactContext.startActivity(intent)
+                    promise.resolve(false)
+                    return
+                }
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
+    fun isBatteryOptimizationIgnored(promise: Promise) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val powerManager = reactContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                val packageName = reactContext.packageName
+                val isIgnored = powerManager?.isIgnoringBatteryOptimizations(packageName) ?: true
+                promise.resolve(isIgnored)
+                return
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(true)
+        }
     }
 
     @ReactMethod

@@ -327,6 +327,22 @@ class OrderPollingServiceManager {
     }
   }
 
+  /**
+   * Request Android battery optimization exemption so background polling and network
+   * are not killed or throttled during Doze mode or when the phone screen is locked.
+   */
+  public async requestBatteryOptimizationExemption(): Promise<boolean> {
+    const mod = this.getNativeModule();
+    if (Platform.OS === 'android' && mod?.requestBatteryOptimizationExemption) {
+      try {
+        return await mod.requestBatteryOptimizationExemption();
+      } catch {
+        return true;
+      }
+    }
+    return true;
+  }
+
   public getIsRunning(): boolean {
     return this.isRunning;
   }
