@@ -59,3 +59,14 @@ jest.mock('react-native-linear-gradient', () => {
     default: (props) => React.createElement(View, props, props.children),
   };
 });
+
+jest.mock('react-native-webview', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const MockWebView = (props) => React.createElement(View, props, props.children);
+  return {
+    __esModule: true,
+    WebView: MockWebView,
+    default: MockWebView,
+  };
+});

@@ -51,6 +51,9 @@ function extractAllText(node: any): string {
 }
 
 describe('AccountStatusScreen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
   it('renders blocked account with Red Matte theme and reason', async () => {
     let renderer: any;
     await ReactTestRenderer.act(async () => {
@@ -508,17 +511,7 @@ describe('AccountStatusScreen', () => {
     expect(openCaptureBtn).toBeTruthy();
 
     await ReactTestRenderer.act(async () => {
-      openCaptureBtn.props.onPress();
-    });
-
-    // Press Take Photo in modal
-    const modalCameraBtn = root.findAll((n: any) => typeof n.props?.onPress === 'function').find((btn: any) => {
-      const texts = extractAllText(btn.props?.children);
-      return texts.includes('Take Photo with Camera');
-    });
-
-    await ReactTestRenderer.act(async () => {
-      await modalCameraBtn.props.onPress();
+      await openCaptureBtn.props.onPress();
     });
 
     expect(userService.faceMatch).toHaveBeenCalledWith(
@@ -532,7 +525,6 @@ describe('AccountStatusScreen', () => {
     expect(joined).toContain('88.4% Match');
     // Freeze title shown above image & update CTA removed
     expect(joined).toContain('Freeze');
-    expect(joined).not.toContain('Retake');
     expect(joined).not.toContain('Face++');
     expect(joined).not.toContain('Validate Face');
   });
@@ -574,28 +566,75 @@ describe('AccountStatusScreen', () => {
     });
 
     await ReactTestRenderer.act(async () => {
-      openCaptureBtn.props.onPress();
-    });
-
-    const modalCameraBtn = root.findAll((n: any) => typeof n.props?.onPress === 'function').find((btn: any) => {
-      const texts = extractAllText(btn.props?.children);
-      return texts.includes('Take Photo with Camera');
-    });
-
-    await ReactTestRenderer.act(async () => {
-      await modalCameraBtn.props.onPress();
+      await openCaptureBtn.props.onPress();
     });
 
     const textNodes = root.findAllByType('Text').map((node: any) => extractAllText(node.props.children));
     const joined = textNodes.join(' ');
     expect(joined).toContain('Face Verification Failed');
     expect(joined).toContain('Face did not match with Aadhaar card photo');
-    // Retake CTA near pic icon is present, but error box duplicate buttons & Validate CTA are removed
-    expect(joined).toContain('Retake');
-    expect(joined).not.toContain('Retake Picture');
-    expect(joined).not.toContain('Retry Match');
-    expect(joined).not.toContain('Validate Face');
+    expect(joined).toContain('Capture Live Selfie');
     expect(joined).not.toContain('Face++');
+  });
+
+  it('allows user to save bank details and police verification when face is not matched (single single submission)', async () => {
+    (userService.updatePendingDocuments as jest.Mock).mockResolvedValueOnce({
+      success: true,
+      status: 'Pending',
+      message: 'Bank Details updated successfully',
+    });
+
+    let renderer: any;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <AccountStatusScreen
+          accountData={{
+            status: 'Pending',
+            userName: 'Single Data Partner',
+            phone: '9625650723',
+            checklist: {
+              picture: { submitted: false },
+              bankDetails: { submitted: false },
+              policeVerification: { submitted: false },
+            },
+          }}
+          onSignOut={jest.fn()}
+        />
+      );
+    });
+
+    const root = renderer.root;
+    // Find text inputs for Bank
+    const inputs = root.findAllByType('TextInput');
+    const accInput = inputs.find((i: any) => i.props.placeholder?.includes('Account Number'));
+    const confirmAccInput = inputs.find((i: any) => i.props.placeholder?.includes('Re-enter'));
+    const ifscInput = inputs.find((i: any) => i.props.placeholder?.includes('HDFC') || i.props.placeholder?.includes('IFSC'));
+
+    await ReactTestRenderer.act(async () => {
+      if (accInput) accInput.props.onChangeText('1234567890');
+      if (confirmAccInput) confirmAccInput.props.onChangeText('1234567890');
+      if (ifscInput) ifscInput.props.onChangeText('HDFC0001234');
+    });
+
+    // Click Save Bank Details button
+    const allBtns = root.findAll((n: any) => typeof n.props?.onPress === 'function');
+    const saveBankBtn = allBtns.find((b: any) => extractAllText(b.props?.children).includes('Save Bank Details'));
+
+    expect(saveBankBtn).toBeTruthy();
+
+    await ReactTestRenderer.act(async () => {
+      await saveBankBtn.props.onPress();
+    });
+
+    expect(userService.updatePendingDocuments).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bankDetails: expect.objectContaining({
+          accountNumber: '1234567890',
+          ifscCode: 'HDFC0001234',
+        }),
+      }),
+      expect.anything()
+    );
   });
 
   it('enforces 30-second cooldown between refresh API calls', async () => {

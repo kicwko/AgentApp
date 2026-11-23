@@ -12,6 +12,7 @@ LogBox.ignoreAllLogs();
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AccountStatusScreen, type AccountStatusData } from './src/screens/AccountStatusScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
+import { RegisterScreen } from './src/screens/RegisterScreen';
 import { SignInScreen } from './src/screens/SignInScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { configureGoogleSignIn } from './src/services/googleAuth';
@@ -437,10 +438,16 @@ function App() {
     );
   } else if (user) {
     content = <HomeScreen user={user} onSignOut={handleSignOut} />;
-  } else if (authScreen === 'signin' || authScreen === 'register') {
+  } else if (authScreen === 'register') {
+    content = (
+      <RegisterScreen
+        onBack={() => setAuthScreen('signin')}
+        onGoToSignIn={() => setAuthScreen('signin')}
+      />
+    );
+  } else if (authScreen === 'signin') {
     content = (
       <SignInScreen
-        isRegister={authScreen === 'register'}
         onBack={() => setAuthScreen('welcome')}
         onGoToRegister={() => setAuthScreen('register')}
         onGoToSignIn={() => setAuthScreen('signin')}

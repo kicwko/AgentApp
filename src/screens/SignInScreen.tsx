@@ -521,11 +521,9 @@ export function SignInScreen({
 
         <KweeckoLogo compact />
 
-        <Text style={styles.heading}>{isRegister ? 'Register as Partner' : 'Sign In'}</Text>
+        <Text style={styles.heading}>Sign In</Text>
         <Text style={styles.subtext}>
-          {isRegister
-            ? 'Enter your mobile number to register and receive instant society dispatches.'
-            : 'Sign in with your mobile number or Google account to access your tasks.'}
+          Sign in with your mobile number or Google account to access your tasks.
         </Text>
 
         {error && (
@@ -571,7 +569,7 @@ export function SignInScreen({
             </View>
 
             <GradientButton
-              title={isRegister ? 'Send OTP to Register' : 'Send OTP'}
+              title="Send OTP"
               onPress={handleSendOtp}
               disabled={sendingOtp || phoneNumber.length < 10}
               loading={sendingOtp}
@@ -651,18 +649,16 @@ export function SignInScreen({
           )}
         </TouchableOpacity>
 
-        {/* Switch between Sign In and Register */}
+        {/* Switch to Register via Web Onboarding */}
         <View style={styles.switchAuthRow}>
           <Text style={styles.switchAuthPrompt}>
-            {isRegister
-              ? 'Already registered as a partner?'
-              : "Don't have a partner account?"}
+            Don't have a partner account?
           </Text>
           <TouchableOpacity
-            onPress={isRegister ? onGoToSignIn : onGoToRegister}
+            onPress={onGoToRegister}
             activeOpacity={0.8}>
             <Text style={styles.switchAuthLink}>
-              {isRegister ? ' Sign In' : ' Register / Sign Up'}
+              {' Register / Sign Up'}
             </Text>
           </TouchableOpacity>
         </View>

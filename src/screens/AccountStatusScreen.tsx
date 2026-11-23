@@ -355,23 +355,37 @@ export function AccountStatusScreen({
   const isAccountMatched =
     accountNumber.length >= 6 && accountNumber === confirmAccountNumber;
 
-  // Open capture modal
+  // Open capture modal - for selfie, exclusively open front camera (no gallery/file upload allowed)
   const handleOpenCapture = (target: 'selfie' | 'cheque' | 'police') => {
+    if (target === 'selfie') {
+      // Point 3: For Selfie Camera allow ONLY front camera, DO NOT allow file upload/back camera
+      handleApplyCapture('camera', 'selfie');
+      return;
+    }
     setCaptureTarget(target);
     setCaptureModalVisible(true);
   };
 
   // Confirm capture action using real camera & file picker
-  const handleApplyCapture = async (type: 'camera' | 'gallery') => {
-    const target = captureTarget;
+  const handleApplyCapture = async (
+    type: 'camera' | 'gallery',
+    explicitTarget?: 'selfie' | 'cheque' | 'police'
+  ) => {
+    const target = explicitTarget || captureTarget;
     setCaptureModalVisible(false);
     setCaptureTarget(null);
 
     try {
       let result: PickedMediaResult | null = null;
       if (type === 'camera') {
+        // Point 3: Force front camera for selfie
         result = await mediaPickerService.takePhoto({ isSelfie: target === 'selfie' });
       } else {
+        // Point 3: Disallow file/gallery upload for selfie
+        if (target === 'selfie') {
+          Alert.alert('Live Camera Required', 'Selfie must be taken live with front camera. File upload is not allowed.');
+          return;
+        }
         if (target === 'police') {
           result = await mediaPickerService.pickDocument('application/pdf,image/*');
         } else {
@@ -381,19 +395,19 @@ export function AccountStatusScreen({
 
       if (!result) return;
 
-      setHasUserEdited(true);
-
       const fileData = result.dataUri || result.uri;
       const fileName = result.fileName || (target === 'selfie' ? 'selfie.jpg' : 'document.jpg');
 
       if (target === 'selfie') {
-        setSelfiePhoto(fileData);
-        // Automatically validate clicked photo with Aadhaar document
+        // Point 2: DO NOT save selfiePhoto immediately.
+        // Wait until we get face match response from server!
         validateFaceMatch(fileData);
       } else if (target === 'cheque') {
+        setHasUserEdited(true);
         setChequePhoto(fileData);
         setChequeFileName(fileName);
       } else if (target === 'police') {
+        setHasUserEdited(true);
         setPoliceDocData(fileData);
         setPoliceDocName(fileName);
       }
@@ -409,7 +423,7 @@ export function AccountStatusScreen({
     setFaceValidating(true);
     setFaceMatchResult({
       status: 'validating',
-      message: 'Matching camera photo with Aadhaar document...',
+      message: 'Matching front camera selfie with Aadhaar document...',
     });
 
     try {
@@ -430,9 +444,13 @@ export function AccountStatusScreen({
         res?.message ||
         (isMatch
           ? 'Face verified successfully with Aadhaar document!'
-          : (res as any)?.error || 'Face did not match with Aadhaar card photo. Please upload a clear front-facing picture.');
+          : (res as any)?.error || 'Face did not match with Aadhaar card photo. Please capture a clear front-facing picture.');
 
       if (isMatch) {
+        // Point 2: ONLY save selfie photo when face match response is verified!
+        setSelfiePhoto(imageData);
+        setSelfieSubmitted(true);
+        setHasUserEdited(true);
         setFaceMatchResult({
           status: 'success',
           matched: true,
@@ -440,7 +458,6 @@ export function AccountStatusScreen({
           threshold,
           message: apiMessage,
         });
-        setSelfieSubmitted(true);
         if ((res as any)?.data?.user?.photo) {
           setSelfiePhoto((res as any).data.user.photo);
         }
@@ -451,10 +468,13 @@ export function AccountStatusScreen({
             : apiMessage
         );
       } else {
+        // Point 2: Face did not match - DO NOT save selfie!
         const errorMsg =
           res?.message ||
           (res as any)?.error ||
-          'Face verification did not match your Aadhaar document. Please ensure good lighting and face the camera directly.';
+          'Face verification did not match your Aadhaar document. Please ensure good lighting and face the front camera directly.';
+        
+        // Ensure unverified selfie is NOT saved in selfiePhoto
         setFaceMatchResult({
           status: 'error',
           matched: false,
@@ -471,6 +491,7 @@ export function AccountStatusScreen({
         );
       }
     } catch (err: any) {
+      // Point 2: If face match API gives any error, DO NOT save selfie!
       console.warn('[AccountStatus] faceMatch error:', err);
       const errMsg =
         err?.message ||
@@ -492,7 +513,7 @@ export function AccountStatusScreen({
 
   // 1. Upload Selfie Details
   const handleUploadSelfieDetails = async () => {
-    if (!selfiePhoto) {
+    if (!selfiePhoto || faceMatchResult?.status === 'error' || faceMatchResult?.matched === false) {
       handleOpenCapture('selfie');
       return;
     }
@@ -533,13 +554,6 @@ export function AccountStatusScreen({
       Alert.alert('IFSC Code Required', 'Please enter a valid Bank IFSC code.');
       return;
     }
-    if (!chequePhoto && !bankDetailsSubmitted) {
-      Alert.alert(
-        'Cancelled Cheque Required',
-        'Please capture or attach a clear photo of your cancelled cheque or passbook.'
-      );
-      return;
-    }
 
     setUploadingBank(true);
     try {
@@ -560,7 +574,7 @@ export function AccountStatusScreen({
         setBankDetailsSubmitted(true);
         Alert.alert(
           'Bank Details Uploaded',
-          'Your bank account information and cancelled cheque have been uploaded successfully.'
+          'Your bank account information has been saved successfully.'
         );
         const nextReason = (res as any)?.pendingReason || (res as any)?.data?.pendingReason;
         if (nextReason) setCurrentReason(nextReason);
@@ -610,69 +624,79 @@ export function AccountStatusScreen({
   };
 
   // --------------------------------------------------------------------------
-  // MASTER SUBMIT: ALL 3 PENDING DOCUMENTS
+  // MASTER SUBMIT: SAVE AVAILABLE DOCUMENTS (SINGLE OR MULTIPLE AT ANY TIME)
   // --------------------------------------------------------------------------
   const handleSubmitDocuments = async () => {
-    // 1. Check Selfie
-    if (!selfiePhoto && !selfieSubmitted) {
-      Alert.alert('Selfie Required', 'Please capture your face picture for the security badge.');
-      return;
+    // Point 1: If face do not matched or user not clicked selfie then save other data like Bank data or police verification means user can submit single single data any time.
+    const payload: PendingDocumentsPayload = {};
+    const savedItems: string[] = [];
+
+    // 1. Bank Details Check: If user entered an account number, validate and include
+    const cleanAcc = (accountNumber || '').trim();
+    if (cleanAcc.length > 0) {
+      if (cleanAcc.length < 6) {
+        Alert.alert('Bank Details Error', 'Account number must be at least 6 digits.');
+        return;
+      }
+      if (cleanAcc !== (confirmAccountNumber || '').trim()) {
+        Alert.alert(
+          'Account Number Mismatch',
+          'The re-entered account number does not match. Please verify and re-type.'
+        );
+        return;
+      }
+      const cleanIfsc = (ifscCode || '').trim().toUpperCase();
+      if (!cleanIfsc || cleanIfsc.length < 5) {
+        Alert.alert('IFSC Code Required', 'Please enter a valid Bank IFSC code.');
+        return;
+      }
+      payload.bankDetails = {
+        accountHolderName: accountHolderName || accountData.fullName || 'Agent Partner',
+        accountNumber: cleanAcc,
+        ifscCode: cleanIfsc,
+        bankName: bankName.trim() || undefined,
+        phone: optionalPhone.trim() || undefined,
+        documentData: chequePhoto || undefined,
+        documentName: chequeFileName || 'cancelled_cheque.jpg',
+      };
+      savedItems.push('Bank Details');
     }
 
-    // 2. Check Bank Details
-    if (!accountNumber || accountNumber.trim().length < 6) {
-      Alert.alert('Bank Details Required', 'Please enter your bank account number.');
-      return;
-    }
-    if (accountNumber !== confirmAccountNumber) {
-      Alert.alert(
-        'Account Number Mismatch',
-        'The re-entered account number does not match. Please verify and re-type.'
-      );
-      return;
-    }
-    const cleanIfsc = ifscCode.trim().toUpperCase();
-    if (!cleanIfsc || cleanIfsc.length < 5) {
-      Alert.alert('IFSC Code Required', 'Please enter a valid Bank IFSC code.');
-      return;
-    }
-    if (!chequePhoto && !bankDetailsSubmitted) {
-      Alert.alert(
-        'Cancelled Cheque Required',
-        'Please capture or upload a clear photo of your cancelled cheque or passbook.'
-      );
-      return;
+    // 2. Police Verification Check: If user attached a document, include it
+    if (policeDocData) {
+      payload.policeVerification = {
+        documentData: policeDocData,
+        documentName: policeDocName || 'police-clearance-certificate.pdf',
+        status: 'Pending',
+      };
+      savedItems.push('Police Verification');
     }
 
-    // 3. Check Police Verification
-    if (!policeDocData && !policeSubmitted) {
+    // 3. Selfie Photo:
+    // Point 2: If face match API gave error or not matched, DO NOT save selfie!
+    // ONLY include selfie if face match succeeded and photo is verified!
+    const isFaceVerified =
+      Boolean(selfiePhoto) &&
+      (faceMatchResult?.status === 'success' ||
+        faceMatchResult?.matched === true ||
+        (selfieSubmitted && faceMatchResult?.status !== 'error'));
+
+    if (isFaceVerified && selfiePhoto) {
+      payload.picture = selfiePhoto;
+      savedItems.push('Selfie Photo');
+    }
+
+    // 4. Validate that user has provided at least one piece of data
+    if (savedItems.length === 0) {
       Alert.alert(
-        'Police Verification Required',
-        'Please upload your Police Clearance Certificate (PDF/image) or capture document image.'
+        'Nothing to Save',
+        'Please enter your Bank Details, attach a Police Verification Certificate, or capture your Selfie to submit.'
       );
       return;
     }
 
     setSubmitting(true);
     try {
-      const payload: PendingDocumentsPayload = {
-        picture: selfiePhoto || undefined,
-        bankDetails: {
-          accountHolderName: accountHolderName || accountData.fullName || 'Agent Partner',
-          accountNumber: accountNumber.trim(),
-          ifscCode: cleanIfsc,
-          bankName: bankName.trim() || undefined,
-          phone: optionalPhone.trim() || undefined,
-          documentData: chequePhoto || undefined,
-          documentName: chequeFileName || 'cancelled_cheque.jpg',
-        },
-        policeVerification: {
-          documentData: policeDocData || undefined,
-          documentName: policeDocName || 'police-clearance-certificate.pdf',
-          status: 'Pending',
-        },
-      };
-
       const token = accountData.token || accountData.userId || accountData.phone;
       const res = await userService.updatePendingDocuments(payload, token);
 
@@ -690,18 +714,19 @@ export function AccountStatusScreen({
           return;
         }
 
+        if (payload.bankDetails) setBankDetailsSubmitted(true);
+        if (payload.policeVerification) setPoliceSubmitted(true);
+        if (payload.picture) setSelfieSubmitted(true);
+
         const updatedReason =
           res.pendingReason ||
           (res as any)?.data?.pendingReason ||
           res.message ||
-          'All 3 mandatory verification documents submitted. Pending final administrator KYC verification.';
+          'Verification data saved successfully.';
         setCurrentReason(updatedReason);
-        setSelfieSubmitted(true);
-        setBankDetailsSubmitted(true);
-        setPoliceSubmitted(true);
         setHasUserEdited(false);
         baselineRef.current = {
-          selfiePhoto,
+          selfiePhoto: payload.picture ? selfiePhoto : baselineRef.current.selfiePhoto,
           accountNumber,
           confirmAccountNumber,
           ifscCode,
@@ -711,8 +736,8 @@ export function AccountStatusScreen({
         };
 
         Alert.alert(
-          'Documents Submitted!',
-          'Your selfie, bank details with cancelled cheque, and police clearance document have been submitted to the society security desk for approval.',
+          'Saved Successfully! ✓',
+          `Your ${savedItems.join(' and ')} ${savedItems.length > 1 ? 'have' : 'has'} been saved successfully.\n\nYou can complete and submit any remaining verifications at any time.`,
           [{ text: 'OK' }]
         );
 
@@ -725,7 +750,7 @@ export function AccountStatusScreen({
     } catch (err: any) {
       Alert.alert(
         'Submission Error',
-        err?.message || 'Could not submit verification documents. Please try again.'
+        err?.message || 'Could not save verification documents. Please try again.'
       );
     } finally {
       setSubmitting(false);
@@ -1268,6 +1293,24 @@ export function AccountStatusScreen({
                     </TouchableOpacity>
                   </View>
                 )}
+
+                {/* Single Submission Button for Selfie Picture (When verified) */}
+                {isImageValidated && selfiePhoto ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.cardActionSaveBtn,
+                      { backgroundColor: theme.primary, marginTop: 12 },
+                    ]}
+                    onPress={handleUploadSelfieDetails}
+                    disabled={uploadingSelfie}
+                    activeOpacity={0.85}>
+                    {uploadingSelfie ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.cardActionSaveBtnText}>💾 Save Selfie Picture</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
               </View>
             )}
 
@@ -1509,6 +1552,22 @@ export function AccountStatusScreen({
                       </TouchableOpacity>
                     </View>
                   )}
+
+                  {/* Single Submission Button for Bank Details (User can save single data any time) */}
+                  <TouchableOpacity
+                    style={[
+                      styles.cardActionSaveBtn,
+                      { backgroundColor: theme.primary },
+                    ]}
+                    onPress={handleUploadBankDetails}
+                    disabled={uploadingBank}
+                    activeOpacity={0.85}>
+                    {uploadingBank ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.cardActionSaveBtnText}>💾 Save Bank Details</Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -1623,6 +1682,24 @@ export function AccountStatusScreen({
                     </TouchableOpacity>
                   </View>
                 )}
+
+                {/* Single Submission Button for Police Verification (User can save single data any time) */}
+                {policeDocData ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.cardActionSaveBtn,
+                      { backgroundColor: theme.primary, marginTop: 12 },
+                    ]}
+                    onPress={handleUploadPoliceDetails}
+                    disabled={uploadingPolice}
+                    activeOpacity={0.85}>
+                    {uploadingPolice ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.cardActionSaveBtnText}>💾 Save Police Verification</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
               </View>
             )}
           </View>
@@ -2675,5 +2752,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#047857',
+  },
+  cardActionSaveBtn: {
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    shadowColor: 'rgba(79, 70, 229, 0.2)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardActionSaveBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
 });

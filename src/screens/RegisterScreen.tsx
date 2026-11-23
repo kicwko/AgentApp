@@ -1,220 +1,312 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
+  BackHandler,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
+  View,
 } from 'react-native';
-import { KweeckoLogo } from '../components/KweeckoLogo';
-import { registerWithEmail } from '../services/firebaseAuth';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { KweeckoLogo } from '../components/KweeckoLogo';
+
+const ONBOARDING_URL = 'https://kweecko.com/onboarding?isapp=true';
+const WebViewComponent = WebView as any;
 
 type Props = {
   onBack: () => void;
-  onGoToSignIn: () => void;
+  onGoToSignIn?: () => void;
 };
 
 export function RegisterScreen({ onBack, onGoToSignIn }: Props) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+  const webViewRef = useRef<WebView>(null);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
-  const handleRegister = async () => {
-    if (!email.trim() || !password) {
-      setError('Enter your email and a password.');
-      return;
-    }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
-    setError(null);
-    setSubmitting(true);
-    try {
-      await registerWithEmail(email, password);
-      // Auth state listener in App.tsx handles navigation on success.
-    } catch (err) {
-      setError(mapAuthError(err));
-    } finally {
-      setSubmitting(false);
-    }
+  // Handle hardware back button on Android
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const backAction = () => {
+      if (canGoBack && webViewRef.current) {
+        webViewRef.current.goBack();
+        return true;
+      }
+      onBack();
+      return true;
+    };
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [canGoBack, onBack]);
+
+  const handleReload = () => {
+    setHasError(false);
+    setLoading(true);
+    webViewRef.current?.reload();
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled">
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Text style={styles.backButtonText}>{'\u2190'} Back</Text>
-        </TouchableOpacity>
-
-        <KweeckoLogo compact />
-
-        <Text style={styles.heading}>Create Account</Text>
-        <Text style={styles.subtext}>
-          Join the Kweecko partner network and start earning.
-        </Text>
-
-        {error && <Text style={styles.errorText}>{error}</Text>}
-
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          placeholderTextColor={colors.textMuted}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password (min. 6 characters)"
-          placeholderTextColor={colors.textMuted}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Confirm password"
-          placeholderTextColor={colors.textMuted}
-          secureTextEntry
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-        />
-
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 10), paddingBottom: Math.max(insets.bottom, 10) }]}>
+      {/* Top Navigation Bar */}
+      <View style={styles.header}>
         <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={handleRegister}
-          disabled={submitting}
-          activeOpacity={0.85}>
-          {submitting ? (
-            <ActivityIndicator color={colors.white} />
-          ) : (
-            <Text style={styles.primaryButtonText}>Create Account</Text>
-          )}
+          style={styles.backBtn}
+          onPress={() => {
+            if (canGoBack && webViewRef.current) {
+              webViewRef.current.goBack();
+            } else {
+              onBack();
+            }
+          }}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Back">
+          <Text style={styles.backArrow}>←</Text>
+          <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={onGoToSignIn} style={styles.linkRow}>
-          <Text style={styles.linkText}>
-            Already have an account? <Text style={styles.linkTextBold}>Sign in</Text>
+        <View style={styles.centerInfo}>
+          <Text style={styles.headerTitle}>Partner Onboarding</Text>
+          <Text style={styles.headerSub}>kweecko.com/onboarding</Text>
+        </View>
+
+        <View style={styles.rightActions}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={handleReload}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh page">
+            <Text style={styles.actionIcon}>🔄</Text>
+          </TouchableOpacity>
+          {onGoToSignIn && (
+            <TouchableOpacity
+              style={styles.signInBtn}
+              onPress={onGoToSignIn}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Sign In">
+              <Text style={styles.signInBtnText}>Sign In</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Progress / Loading bar */}
+      {loading && (
+        <View style={styles.loadingBanner}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.loadingBannerText}>Loading Kweecko Onboarding portal...</Text>
+        </View>
+      )}
+
+      {/* Error state */}
+      {hasError ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorIcon}>⚠️</Text>
+          <Text style={styles.errorTitle}>Unable to load Onboarding portal</Text>
+          <Text style={styles.errorSub}>
+            Please check your internet connection and try again.
           </Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <TouchableOpacity
+            style={styles.retryBtn}
+            onPress={handleReload}
+            activeOpacity={0.8}>
+            <Text style={styles.retryBtnText}>Retry Connection</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <WebViewComponent
+          ref={webViewRef}
+          source={{ uri: ONBOARDING_URL }}
+          style={styles.webView}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          startInLoadingState={true}
+          scalesPageToFit={true}
+          geolocationEnabled={true}
+          allowsInlineMediaPlayback={true}
+          mediaPlaybackRequiresUserAction={false}
+          onNavigationStateChange={(navState: any) => {
+            setCanGoBack(Boolean(navState.canGoBack));
+            setLoading(Boolean(navState.loading));
+          }}
+          onLoadStart={() => {
+            setLoading(true);
+            setHasError(false);
+          }}
+          onLoadEnd={() => setLoading(false)}
+          onError={() => {
+            setLoading(false);
+            setHasError(true);
+          }}
+          onHttpError={(syntheticEvent: any) => {
+            const { nativeEvent } = syntheticEvent;
+            if (nativeEvent.statusCode >= 400) {
+              console.warn('[RegisterWebView] HTTP error:', nativeEvent.statusCode);
+            }
+          }}
+          renderLoading={() => (
+            <View style={styles.centerLoading}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Opening Onboarding Form...</Text>
+            </View>
+          )}
+        />
+      )}
+    </View>
   );
 }
 
-function mapAuthError(err: unknown): string {
-  const code = (err as { code?: string } | null)?.code ?? '';
-  switch (code) {
-    case 'auth/email-already-in-use':
-      return 'An account already exists with this email.';
-    case 'auth/invalid-email':
-      return 'That email address looks invalid.';
-    case 'auth/weak-password':
-      return 'Please choose a stronger password.';
-    case 'auth/network-request-failed':
-      return 'Network error. Check your connection.';
-    default:
-      return 'Something went wrong. Please try again.';
-  }
-}
-
 const styles = StyleSheet.create({
-  screen: {
+  container: {
     flex: 1,
-    backgroundColor: colors.backgroundPeach,
+    backgroundColor: colors.surface,
   },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 48,
-  },
-  backButton: {
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-  },
-  backButtonText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  heading: {
-    fontFamily: typography.fontFamily,
-    fontWeight: typography.weightBold,
-    fontSize: 28,
-    color: colors.textDark,
-    marginTop: 24,
-  },
-  subtext: {
-    fontFamily: typography.fontFamily,
-    fontSize: 15,
-    color: colors.textMuted,
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  errorText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    color: colors.error,
-    marginBottom: 12,
-  },
-  input: {
-    backgroundColor: colors.white,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
-    color: colors.textDark,
-    marginBottom: 12,
-  },
-  primaryButton: {
-    backgroundColor: colors.buttonPrimary,
-    borderRadius: 999,
-    paddingVertical: 16,
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 3,
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(226, 232, 240, 0.8)',
+    minHeight: 52,
   },
-  primaryButtonText: {
-    fontFamily: typography.fontFamily,
-    fontWeight: typography.weightSemibold,
-    fontSize: 16,
-    color: colors.white,
-  },
-  linkRow: {
+  backBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 24,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceContainerLow,
+    gap: 4,
   },
-  linkText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  linkTextBold: {
-    fontWeight: typography.weightBold,
+  backArrow: {
+    fontSize: 18,
+    fontWeight: '700',
     color: colors.primary,
+  },
+  backText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: typography.weightSemibold,
+    color: colors.onSurface,
+  },
+  centerInfo: {
+    alignItems: 'center',
+    flex: 1,
+    paddingHorizontal: 8,
+  },
+  headerTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    fontWeight: typography.weightBold,
+    color: colors.onSurface,
+  },
+  headerSub: {
+    fontFamily: typography.fontFamily,
+    fontSize: 10,
+    color: colors.onSurfaceVariant,
+    marginTop: 1,
+  },
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceContainerLow,
+  },
+  actionIcon: {
+    fontSize: 14,
+  },
+  signInBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+  },
+  signInBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: typography.weightBold,
+    color: '#FFFFFF',
+  },
+  loadingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    backgroundColor: colors.surfaceContainer,
+    gap: 8,
+  },
+  loadingBannerText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: typography.weightSemibold,
+  },
+  webView: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  centerLoading: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    color: colors.onSurfaceVariant,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 10,
+  },
+  errorIcon: {
+    fontSize: 40,
+    marginBottom: 4,
+  },
+  errorTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 16,
+    fontWeight: typography.weightBold,
+    color: colors.onSurface,
+    textAlign: 'center',
+  },
+  errorSub: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    color: colors.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  retryBtn: {
+    marginTop: 12,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  retryBtnText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: typography.weightBold,
+    color: '#FFFFFF',
   },
 });
