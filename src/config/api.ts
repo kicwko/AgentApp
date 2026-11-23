@@ -11,7 +11,7 @@ export const API_CONFIG = {
   baseUrl: PRODUCTION_API_URL,
   localDevUrl: LOCAL_DEV_API_URL,
   androidEmulatorUrl: ANDROID_EMULATOR_API_URL,
-  timeoutMs: 25000,
+  timeoutMs: 60000,
   defaultAdminEmail: 'admin@kwiqo.com',
   defaultAdminRole: 'admin',
   endpoints: {

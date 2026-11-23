@@ -50,8 +50,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
                         val url = URL(endpointUrl)
                         conn = url.openConnection() as HttpURLConnection
                         conn.requestMethod = "PUT"
-                        conn.connectTimeout = 10000
-                        conn.readTimeout = 10000
+                        conn.connectTimeout = 60000
+                        conn.readTimeout = 60000
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.setRequestProperty("Accept", "application/json")
                         conn.setRequestProperty("x-admin-email", "admin@kwiqo.com")

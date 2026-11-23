@@ -348,8 +348,8 @@ class OrderPollingService : Service() {
             val url = URL(queryUrl)
             conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
-            conn.connectTimeout = 15000
-            conn.readTimeout = 15000
+            conn.connectTimeout = 60000
+            conn.readTimeout = 60000
             conn.setRequestProperty("Accept", "application/json")
             conn.setRequestProperty("Content-Type", "application/json")
             conn.setRequestProperty("x-admin-email", "admin@kwiqo.com")
@@ -402,8 +402,8 @@ class OrderPollingService : Service() {
             val url = URL(fallbackUrl)
             fallbackConn = url.openConnection() as HttpURLConnection
             fallbackConn.requestMethod = "GET"
-            fallbackConn.connectTimeout = 10000
-            fallbackConn.readTimeout = 10000
+            fallbackConn.connectTimeout = 60000
+            fallbackConn.readTimeout = 60000
             fallbackConn.setRequestProperty("Accept", "application/json")
             fallbackConn.setRequestProperty("Content-Type", "application/json")
             fallbackConn.setRequestProperty("x-admin-email", "admin@kwiqo.com")
