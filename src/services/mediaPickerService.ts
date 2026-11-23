@@ -47,6 +47,26 @@ export const mediaPickerService = {
       throw new Error('Camera permission was denied. Please allow camera access in Settings.');
     }
 
+    // Exclusively use in-app dedicated Front Camera on Android (no back camera or switch option)
+    if (options?.isSelfie && Platform.OS === 'android' && FilePickerModule?.captureFrontSelfie) {
+      try {
+        const nativeSelfie = await FilePickerModule.captureFrontSelfie();
+        if (!nativeSelfie) return null;
+        return {
+          uri: nativeSelfie.uri,
+          fileName: nativeSelfie.fileName || 'selfie.jpg',
+          type: nativeSelfie.type || 'image/jpeg',
+          base64: nativeSelfie.base64 || '',
+          dataUri:
+            nativeSelfie.dataUri ||
+            (nativeSelfie.base64 ? `data:image/jpeg;base64,${nativeSelfie.base64}` : nativeSelfie.uri),
+          fileSize: nativeSelfie.size,
+        };
+      } catch (err: any) {
+        console.warn('[mediaPickerService] captureFrontSelfie error, falling back to camera intent:', err?.message);
+      }
+    }
+
     const cameraOptions: CameraOptions = {
       mediaType: 'photo',
       cameraType: options?.isSelfie ? 'front' : 'back',

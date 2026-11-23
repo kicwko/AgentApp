@@ -16,6 +16,8 @@ type Props = {
   onPressLogo?: () => void;
   title?: string;
   showDutyToggle?: boolean;
+  showSignOut?: boolean;
+  onSignOut?: () => void;
   rightAction?: React.ReactNode;
 };
 
@@ -24,6 +26,8 @@ export function AppHeader({
   onToggleDuty,
   onPressLogo,
   showDutyToggle = true,
+  showSignOut = false,
+  onSignOut,
   rightAction,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -39,9 +43,20 @@ export function AppHeader({
           style={styles.headerLogo}
         />
 
-        {/* Right actions: Duty toggle */}
+        {/* Right actions: Duty toggle / Sign out / custom */}
         <View style={styles.actionsGroup}>
           {rightAction}
+
+          {showSignOut && onSignOut && (
+            <TouchableOpacity
+              style={styles.signOutButton}
+              onPress={onSignOut}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Sign Out">
+              <Text style={styles.signOutButtonText}>Sign Out</Text>
+            </TouchableOpacity>
+          )}
 
           {showDutyToggle && (
             <TouchableOpacity
@@ -115,6 +130,25 @@ const styles = StyleSheet.create({
     fontWeight: typography.weightSemibold,
     fontSize: 12,
     color: colors.onSurface,
+    letterSpacing: 0.2,
+  },
+  signOutButton: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  signOutButtonText: {
+    fontFamily: typography.fontFamily,
+    fontWeight: typography.weightBold,
+    fontSize: 12,
+    color: '#DC2626',
     letterSpacing: 0.2,
   },
 });

@@ -1,3 +1,19 @@
+const { NativeModules } = require('react-native');
+NativeModules.FilePickerModule = {
+  pickFile: jest.fn(() => Promise.resolve(null)),
+  captureFrontSelfie: jest.fn(() =>
+    Promise.resolve({
+      uri: 'file://mock/front_selfie.jpg',
+      fileName: 'selfie.jpg',
+      type: 'image/jpeg',
+      base64: 'mock_base64',
+      dataUri: 'data:image/jpeg;base64,mock_base64',
+      size: 1024,
+    })
+  ),
+  generateMonthlyOrdersPdf: jest.fn(() => Promise.resolve('file://mock/report.pdf')),
+};
+
 const mockStorage = {};
 
 const mockAsyncStorage = {

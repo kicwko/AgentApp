@@ -79,6 +79,33 @@ describe('AccountStatusScreen', () => {
     expect(joined).toContain('1800-KWICKO-GATE');
   });
 
+  it('renders Sign Out button in header for Pending/Blocked user and triggers onSignOut', async () => {
+    const onSignOutMock = jest.fn();
+    let renderer: any;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <AccountStatusScreen
+          accountData={{
+            status: 'Pending',
+            userName: 'Pending Partner',
+            phone: '9876543210',
+          }}
+          onSignOut={onSignOutMock}
+        />
+      );
+    });
+
+    const root = renderer.root;
+    const signOutBtn = root.findByProps({ accessibilityLabel: 'Sign Out' });
+    expect(signOutBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      signOutBtn.props.onPress();
+    });
+
+    expect(onSignOutMock).toHaveBeenCalled();
+  });
+
   it('renders pending account with the 3 mandatory documents without redundant 1st header', async () => {
     let renderer: any;
     await ReactTestRenderer.act(async () => {

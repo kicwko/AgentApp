@@ -26,13 +26,33 @@ class FilePickerModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext), ActivityEventListener {
 
     private var pickerPromise: Promise? = null
+    private var selfiePromise: Promise? = null
     private val PICK_FILE_REQUEST = 41238
+    private val FRONT_SELFIE_REQUEST = 41239
 
     init {
         reactContext.addActivityEventListener(this)
     }
 
     override fun getName(): String = "FilePickerModule"
+
+    @ReactMethod
+    fun captureFrontSelfie(promise: Promise) {
+        val activity = reactContext.currentActivity
+        if (activity == null) {
+            promise.reject("ACTIVITY_NOT_FOUND", "Activity doesn't exist")
+            return
+        }
+
+        selfiePromise = promise
+        try {
+            val intent = Intent(activity, FrontSelfieActivity::class.java)
+            activity.startActivityForResult(intent, FRONT_SELFIE_REQUEST)
+        } catch (e: Exception) {
+            selfiePromise?.reject("CAMERA_ERROR", "Failed to launch front selfie camera: ${e.message}")
+            selfiePromise = null
+        }
+    }
 
     @ReactMethod
     fun pickFile(mimeType: String?, promise: Promise) {
@@ -65,6 +85,40 @@ class FilePickerModule(private val reactContext: ReactApplicationContext) :
         resultCode: Int,
         data: Intent?
     ) {
+        if (requestCode == FRONT_SELFIE_REQUEST) {
+            if (resultCode != Activity.RESULT_OK || data == null) {
+                selfiePromise?.resolve(null)
+                selfiePromise = null
+                return
+            }
+
+            try {
+                val uriStr = data.getStringExtra("uri") ?: ""
+                val base64 = data.getStringExtra("base64") ?: ""
+                val dataUri = data.getStringExtra("dataUri") ?: ""
+                val fileName = data.getStringExtra("fileName") ?: "selfie.jpg"
+                val mimeType = data.getStringExtra("type") ?: "image/jpeg"
+                val fileSize = data.getLongExtra("fileSize", 0L)
+
+                val result = Arguments.createMap().apply {
+                    putString("uri", uriStr)
+                    putString("fileName", fileName)
+                    putString("type", mimeType)
+                    putDouble("size", fileSize.toDouble())
+                    if (base64.isNotEmpty()) {
+                        putString("base64", base64)
+                        putString("dataUri", dataUri)
+                    }
+                }
+                selfiePromise?.resolve(result)
+            } catch (e: Exception) {
+                selfiePromise?.reject("CAPTURE_PARSE_ERROR", e.message)
+            } finally {
+                selfiePromise = null
+            }
+            return
+        }
+
         if (requestCode != PICK_FILE_REQUEST) return
 
         if (resultCode != Activity.RESULT_OK || data == null || data.data == null) {

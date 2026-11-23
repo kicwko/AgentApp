@@ -826,9 +826,11 @@ export function AccountStatusScreen({
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.bg }]}>
-      {/* Fixed Common App Header at Top */}
+      {/* Fixed Common App Header at Top with Sign Out for Pending / Blocked Account */}
       <AppHeader
         showDutyToggle={false}
+        showSignOut={true}
+        onSignOut={onSignOut}
       />
 
       <KeyboardAvoidingView

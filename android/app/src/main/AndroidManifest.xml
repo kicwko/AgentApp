@@ -43,6 +43,13 @@
         </intent-filter>
       </activity>
 
+      <!-- Dedicated Front-Camera-Only Selfie Activity -->
+      <activity
+        android:name=".FrontSelfieActivity"
+        android:screenOrientation="portrait"
+        android:theme="@style/Theme.AppCompat.NoActionBar"
+        android:exported="false" />
+
       <service
         android:name=".OrderPollingService"
         android:enabled="true"

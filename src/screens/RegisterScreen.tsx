@@ -75,26 +75,8 @@ export function RegisterScreen({ onBack, onGoToSignIn }: Props) {
           <Text style={styles.headerSub}>kweecko.com/onboarding</Text>
         </View>
 
-        <View style={styles.rightActions}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={handleReload}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Refresh page">
-            <Text style={styles.actionIcon}>🔄</Text>
-          </TouchableOpacity>
-          {onGoToSignIn && (
-            <TouchableOpacity
-              style={styles.signInBtn}
-              onPress={onGoToSignIn}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Sign In">
-              <Text style={styles.signInBtnText}>Sign In</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {/* Right balance spacer (Signin & refresh icons removed) */}
+        <View style={styles.headerRightSpacer} />
       </View>
 
       {/* Progress / Loading bar */}
@@ -216,30 +198,8 @@ const styles = StyleSheet.create({
     color: colors.onSurfaceVariant,
     marginTop: 1,
   },
-  rightActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  actionBtn: {
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: colors.surfaceContainerLow,
-  },
-  actionIcon: {
-    fontSize: 14,
-  },
-  signInBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-  },
-  signInBtnText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: typography.weightBold,
-    color: '#FFFFFF',
+  headerRightSpacer: {
+    width: 60,
   },
   loadingBanner: {
     flexDirection: 'row',

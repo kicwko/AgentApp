@@ -56,4 +56,29 @@ describe('AppHeader Component', () => {
     const dutyText = textNodes.find(n => n.props.children === 'OFF DUTY');
     expect(dutyText).toBeDefined();
   });
+
+  it('renders Sign Out button in header when showSignOut is true', () => {
+    let signOutCalled = false;
+    let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
+    ReactTestRenderer.act(() => {
+      renderer = ReactTestRenderer.create(
+        <AppHeader
+          showDutyToggle={false}
+          showSignOut={true}
+          onSignOut={() => {
+            signOutCalled = true;
+          }}
+        />
+      );
+    });
+
+    const root = renderer!.root;
+    const signOutBtn = root.findByProps({ accessibilityLabel: 'Sign Out' });
+    expect(signOutBtn).toBeDefined();
+
+    ReactTestRenderer.act(() => {
+      signOutBtn.props.onPress();
+    });
+    expect(signOutCalled).toBe(true);
+  });
 });
