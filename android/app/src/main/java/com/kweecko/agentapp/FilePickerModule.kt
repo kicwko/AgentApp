@@ -93,12 +93,24 @@ class FilePickerModule(private val reactContext: ReactApplicationContext) :
             }
 
             try {
+                val filePath = data.getStringExtra("filePath")
                 val uriStr = data.getStringExtra("uri") ?: ""
-                val base64 = data.getStringExtra("base64") ?: ""
-                val dataUri = data.getStringExtra("dataUri") ?: ""
                 val fileName = data.getStringExtra("fileName") ?: "selfie.jpg"
                 val mimeType = data.getStringExtra("type") ?: "image/jpeg"
-                val fileSize = data.getLongExtra("fileSize", 0L)
+
+                var fileSize = data.getLongExtra("fileSize", 0L)
+                var base64 = data.getStringExtra("base64") ?: ""
+
+                if (!filePath.isNullOrEmpty()) {
+                    val file = File(filePath)
+                    if (file.exists()) {
+                        fileSize = file.length()
+                        val bytes = file.readBytes()
+                        base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    }
+                }
+
+                val dataUri = if (base64.isNotEmpty()) "data:$mimeType;base64,$base64" else uriStr
 
                 val result = Arguments.createMap().apply {
                     putString("uri", uriStr)
