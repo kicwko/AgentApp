@@ -467,6 +467,38 @@ export function SettingsScreen({
     );
   };
 
+  // Launch clean NPCI standard UPI link without hardcoded payee name
+  // Omitting 'pn' allows Paytm/PhonePe/GPay to fetch the real bank account name registered to ero@icici
+  const handleOpenUpi = async (targetApp?: 'paytm' | 'phonepe' | 'gpay' | 'generic') => {
+    const baseParams = `pa=ero@icici&am=${onetimefee}&cu=INR`;
+    let targetUrl = `upi://pay?${baseParams}`;
+
+    if (targetApp === 'paytm') {
+      targetUrl = `paytmmp://pay?${baseParams}`;
+    } else if (targetApp === 'phonepe') {
+      targetUrl = `phonepe://pay?${baseParams}`;
+    } else if (targetApp === 'gpay') {
+      targetUrl = `tez://upi/pay?${baseParams}`;
+    }
+
+    try {
+      const canOpen = await Linking.canOpenURL(targetUrl);
+      if (canOpen) {
+        await Linking.openURL(targetUrl);
+        return;
+      }
+    } catch {
+      // Intent scheme fallback
+    }
+
+    try {
+      const genericUrl = `upi://pay?${baseParams}`;
+      await Linking.openURL(genericUrl);
+    } catch {
+      showToast('Could not launch UPI app. Please pay to ero@icici in your UPI app');
+    }
+  };
+
   // Sign out confirmation dialog
   const handleSignOutPress = () => {
     Alert.alert(
@@ -1773,7 +1805,7 @@ export function SettingsScreen({
             </View>
 
             <ScrollView
-              style={{ maxHeight: 380, marginVertical: 10 }}
+              style={{ maxHeight: 460, marginVertical: 10 }}
               showsVerticalScrollIndicator={false}>
               <View style={styles.payAmountBox}>
                 <Text style={styles.payAmountLabel}>Total Amount Due</Text>
@@ -1786,10 +1818,14 @@ export function SettingsScreen({
               <View style={styles.payOptionBox}>
                 <Text style={styles.payOptionTitle}>Pay via UPI App</Text>
                 <Text style={styles.payOptionDesc}>
-                  Transfer directly using Google Pay, PhonePe, Paytm, or BHIM:
+                  Transfer directly to ICICI UPI ID (valid bank account):
                 </Text>
+
                 <View style={styles.upiCopyRow}>
-                  <Text style={styles.upiVpaText}>ero@icici</Text>
+                  <View>
+                    <Text style={styles.upiLabelText}>ICICI UPI ID</Text>
+                    <Text style={styles.upiVpaText}>ero@icici</Text>
+                  </View>
                   <TouchableOpacity
                     style={styles.upiCopyBtn}
                     onPress={() => {
@@ -1800,17 +1836,48 @@ export function SettingsScreen({
                   </TouchableOpacity>
                 </View>
 
+                {/* Primary Launch UPI button */}
                 <TouchableOpacity
                   style={styles.openUpiBtn}
-                  onPress={() => {
-                    const upiUrl = `upi://pay?pa=ero@icici&pn=Kweecko&am=${onetimefee}&cu=INR&tn=Kweecko%20Agent%20Registration%20Fee`;
-                    Linking.openURL(upiUrl).catch(() => {
-                      showToast('Could not launch UPI app. Please pay to ero@icici');
-                    });
-                  }}
+                  onPress={() => handleOpenUpi('generic')}
                   activeOpacity={0.85}>
                   <Text style={styles.openUpiBtnText}>🚀 Open UPI App to Pay ₹{onetimefee}</Text>
                 </TouchableOpacity>
+
+                {/* Quick App Direct Select */}
+                <View style={styles.upiAppRow}>
+                  <TouchableOpacity
+                    style={[styles.upiAppBtn, { backgroundColor: '#E0F2FE', borderColor: '#38BDF8' }]}
+                    onPress={() => handleOpenUpi('paytm')}
+                    activeOpacity={0.8}>
+                    <Text style={[styles.upiAppBtnText, { color: '#0369A1' }]}>Paytm</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.upiAppBtn, { backgroundColor: '#F3E8FF', borderColor: '#C084FC' }]}
+                    onPress={() => handleOpenUpi('phonepe')}
+                    activeOpacity={0.8}>
+                    <Text style={[styles.upiAppBtnText, { color: '#6B21A8' }]}>PhonePe</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.upiAppBtn, { backgroundColor: '#EFF6FF', borderColor: '#93C5FD' }]}
+                    onPress={() => handleOpenUpi('gpay')}
+                    activeOpacity={0.8}>
+                    <Text style={[styles.upiAppBtnText, { color: '#1D4ED8' }]}>GPay</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Direct Scan QR Code */}
+                <View style={styles.qrContainer}>
+                  <Image
+                    source={{
+                      uri: `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+                        `upi://pay?pa=ero@icici&am=${onetimefee}&cu=INR`
+                      )}`,
+                    }}
+                    style={styles.qrImage}
+                  />
+                  <Text style={styles.qrHint}>Or scan QR using any UPI app</Text>
+                </View>
               </View>
 
               <View style={styles.payConfirmBox}>
@@ -3129,6 +3196,13 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
     marginTop: 6,
   },
+  upiLabelText: {
+    fontSize: 10,
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
   upiVpaText: {
     fontSize: 13,
     fontWeight: '700',
@@ -3156,6 +3230,47 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 13,
     fontWeight: '700',
+  },
+  upiAppRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    gap: 8,
+  },
+  upiAppBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upiAppBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  qrContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  qrImage: {
+    width: 140,
+    height: 140,
+    borderRadius: 8,
+  },
+  qrHint: {
+    fontSize: 11,
+    color: colors.onSurfaceVariant,
+    marginTop: 6,
+    fontWeight: '500',
   },
   payConfirmBox: {
     backgroundColor: '#FEF3C7',

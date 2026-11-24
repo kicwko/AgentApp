@@ -200,6 +200,9 @@ describe('Agent Status Polling, Bank UPI & One-Time Payment', () => {
     textNodes = root.findAllByType('Text').map((node: any) => extractAllText(node.props.children));
     joined = textNodes.join(' ');
     expect(joined).toContain('ero@icici');
+    expect(joined).toContain('Paytm');
+    expect(joined).toContain('PhonePe');
+    expect(joined).toContain('GPay');
     expect(joined).toContain('I Have Completed Payment');
 
     // 3. Confirm payment
