@@ -24,72 +24,79 @@ class NotificationActionReceiver : BroadcastReceiver() {
         const val ORDER_ALERT_NOTIFICATION_ID = 1002
 
         fun updateOrderStatusInBackground(context: Context, orderId: String, status: String, reason: String?) {
+            OrderPollingService.setOrderActionInProgress(true)
             thread {
-                val prefs = context.getSharedPreferences("KwiqoAgentPrefs", Context.MODE_PRIVATE)
-                val rawBaseUrl = prefs.getString("baseUrl", "https://kweecko.com/api") ?: "https://kweecko.com/api"
-                val baseUrl = rawBaseUrl.trimEnd('/')
-                val cleanPhone = prefs.getString("phone", null)?.replace("\\D".toRegex(), "")?.takeLast(10)
-                val token = prefs.getString("token", null)
-                val userId = prefs.getString("userId", null)
+                try {
+                    val prefs = context.getSharedPreferences("KwiqoAgentPrefs", Context.MODE_PRIVATE)
+                    val rawBaseUrl = prefs.getString("baseUrl", "https://kweecko.com/api") ?: "https://kweecko.com/api"
+                    val baseUrl = rawBaseUrl.trimEnd('/')
+                    val cleanPhone = prefs.getString("phone", null)?.replace("\\D".toRegex(), "")?.takeLast(10)
+                    val token = prefs.getString("token", null)
+                    val userId = prefs.getString("userId", null)
 
-                val endpoints = listOf(
-                    "$baseUrl/orders/$orderId/status",
-                    "$baseUrl/orders/$orderId",
-                    "$baseUrl/orders/update/$orderId",
-                    "https://kweecko.com/api/orders/$orderId/status",
-                    "https://kweecko.com/api/orders/$orderId"
-                )
+                    val endpoints = listOf(
+                        "$baseUrl/orders/$orderId/status",
+                        "$baseUrl/orders/$orderId",
+                        "$baseUrl/orders/update/$orderId",
+                        "https://kweecko.com/api/orders/$orderId/status",
+                        "https://kweecko.com/api/orders/$orderId"
+                    )
 
-                val payload = buildString {
-                    append("{\"status\":\"$status\"")
-                    if (!reason.isNullOrBlank()) {
-                        append(",\"reason\":\"$reason\"")
-                        append(",\"canceledBy\":\"Agent\"")
+                    val payload = buildString {
+                        append("{\"status\":\"$status\"")
+                        if (!reason.isNullOrBlank()) {
+                            append(",\"reason\":\"$reason\"")
+                            append(",\"canceledBy\":\"Agent\"")
+                        }
+                        append("}")
                     }
-                    append("}")
-                }
 
-                for (endpointUrl in endpoints) {
-                    var conn: HttpURLConnection? = null
-                    try {
-                        val url = URL(endpointUrl)
-                        conn = url.openConnection() as HttpURLConnection
-                        conn.requestMethod = "PUT"
-                        conn.connectTimeout = 60000
-                        conn.readTimeout = 60000
-                        conn.setRequestProperty("Content-Type", "application/json")
-                        conn.setRequestProperty("Accept", "application/json")
-                        conn.setRequestProperty("x-admin-email", "admin@kwiqo.com")
-                        conn.setRequestProperty("x-user-role", "admin")
-                        if (!userId.isNullOrBlank()) {
-                            conn.setRequestProperty("x-user-id", userId)
-                        }
-                        if (!cleanPhone.isNullOrBlank()) {
-                            conn.setRequestProperty("x-user-phone", cleanPhone)
-                            conn.setRequestProperty("x-auth-token", "mock-jwt-$cleanPhone")
-                            conn.setRequestProperty("Authorization", "Bearer mock-jwt-$cleanPhone")
-                        }
-                        if (!token.isNullOrBlank()) {
-                            conn.setRequestProperty("Authorization", "Bearer $token")
-                            conn.setRequestProperty("x-auth-token", token)
-                        }
-                        conn.doOutput = true
+                    for (endpointUrl in endpoints) {
+                        var conn: HttpURLConnection? = null
+                        try {
+                            val url = URL(endpointUrl)
+                            conn = url.openConnection() as HttpURLConnection
+                            conn.requestMethod = "PUT"
+                            conn.connectTimeout = 60000
+                            conn.readTimeout = 60000
+                            conn.setRequestProperty("Content-Type", "application/json")
+                            conn.setRequestProperty("Accept", "application/json")
+                            conn.setRequestProperty("x-admin-email", "admin@kwiqo.com")
+                            conn.setRequestProperty("x-user-role", "admin")
+                            if (!userId.isNullOrBlank()) {
+                                conn.setRequestProperty("x-user-id", userId)
+                            }
+                            if (!cleanPhone.isNullOrBlank()) {
+                                conn.setRequestProperty("x-user-phone", cleanPhone)
+                                conn.setRequestProperty("x-auth-token", "mock-jwt-$cleanPhone")
+                                conn.setRequestProperty("Authorization", "Bearer mock-jwt-$cleanPhone")
+                            }
+                            if (!token.isNullOrBlank()) {
+                                conn.setRequestProperty("Authorization", "Bearer $token")
+                                conn.setRequestProperty("x-auth-token", token)
+                            }
+                            conn.doOutput = true
 
-                        OutputStreamWriter(conn.outputStream, "UTF-8").use { writer ->
-                            writer.write(payload)
-                            writer.flush()
-                        }
+                            OutputStreamWriter(conn.outputStream, "UTF-8").use { writer ->
+                                writer.write(payload)
+                                writer.flush()
+                            }
 
-                        val code = conn.responseCode
-                        Log.d(TAG, "Background update order $orderId to $status at $endpointUrl returned HTTP: $code")
-                        if (code in 200..299) {
-                            break // Succeeded!
+                            val code = conn.responseCode
+                            Log.d(TAG, "Background update order $orderId to $status at $endpointUrl returned HTTP: $code")
+                            if (code in 200..299) {
+                                break // Succeeded!
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed updating order status at $endpointUrl: ${e.message}")
+                        } finally {
+                            conn?.disconnect()
                         }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed updating order status at $endpointUrl: ${e.message}")
-                    } finally {
-                        conn?.disconnect()
                     }
+                } finally {
+                    // Disable flag on API response (both case failed or pass)
+                    OrderPollingService.setOrderActionInProgress(false)
+                    Log.d(TAG, "Order $orderId status update completed. isOrderActionInProgress reset to false.")
                 }
             }
         }

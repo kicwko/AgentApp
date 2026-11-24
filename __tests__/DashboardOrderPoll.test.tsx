@@ -324,4 +324,54 @@ describe('DashboardScreen Polling and Order Dispatch', () => {
     stopRingingSpy.mockRestore();
     markAcceptedSpy.mockRestore();
   });
+
+  it('sets isOrderActionInProgress to true during accept and clears it on response', async () => {
+    let actionStateDuringCall = false;
+    (orderService.updateOrderStatus as jest.Mock).mockImplementation(async () => {
+      actionStateDuringCall = orderPollingService.isOrderActionInProgress();
+      return { success: true, data: { ...mockPendingOrder, status: 'In Transit' } };
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<DashboardScreen user={mockUser as any} />);
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+
+    const root = renderer!.root;
+    const touchables = root.findAllByProps({ activeOpacity: 0.88 });
+    const acceptBtn = touchables.find(t => {
+      try {
+        return JSON.stringify(t.props).includes('Accept Order');
+      } catch {
+        return false;
+      }
+    });
+
+    if (acceptBtn) {
+      await ReactTestRenderer.act(async () => {
+        acceptBtn.props.onPress();
+        for (let i = 0; i < 5; i++) await Promise.resolve();
+      });
+
+      expect(actionStateDuringCall).toBe(true);
+      expect(orderPollingService.isOrderActionInProgress()).toBe(false);
+    }
+  });
+
+  it('suppresses order polling when isOrderActionInProgress is true', async () => {
+    (orderService.pollOrders as jest.Mock).mockClear();
+    orderPollingService.setOrderActionInProgress(true);
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<DashboardScreen user={mockUser as any} />);
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+
+    // pollOrders should not have been called because isOrderActionInProgress is true
+    expect(orderService.pollOrders).not.toHaveBeenCalled();
+
+    orderPollingService.setOrderActionInProgress(false);
+  });
 });

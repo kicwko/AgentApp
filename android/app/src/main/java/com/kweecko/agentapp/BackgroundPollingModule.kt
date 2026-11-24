@@ -202,6 +202,17 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     }
 
     @ReactMethod
+    fun setOrderActionInProgress(inProgress: Boolean, promise: Promise) {
+        OrderPollingService.setOrderActionInProgress(inProgress)
+        promise.resolve(true)
+    }
+
+    @ReactMethod
+    fun isOrderActionInProgress(promise: Promise) {
+        promise.resolve(OrderPollingService.isOrderActionInProgress)
+    }
+
+    @ReactMethod
     fun requestBatteryOptimizationExemption(promise: Promise) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

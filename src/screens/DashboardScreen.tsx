@@ -459,6 +459,7 @@ export function DashboardScreen({
       setPendingOrder(null);
       pendingOrderRef.current = null;
       setPendingTimeLeft(0);
+      orderPollingService.setOrderActionInProgress(true);
 
       try {
         console.log('[DashboardScreen] 5-minute timer expired for order:', orderKey);
@@ -486,6 +487,7 @@ export function DashboardScreen({
       } catch (err) {
         console.warn('[DashboardScreen] Error auto-declining expired order:', err);
       } finally {
+        orderPollingService.setOrderActionInProgress(false);
         orderPollingService.stopRinging().catch(() => {});
         orderPollingService.clearLatestPendingOrder().catch(() => {});
         orderPollingService.setAlertActive(false);
@@ -500,8 +502,13 @@ export function DashboardScreen({
 
   // Poll API (/api/orders/poll) every 25 seconds
   const pollNewOrders = useCallback(async () => {
-    // If user is offline (OFF DUTY) or an alert/pending order is active, do not call polling API
-    if (!isOnDuty || pendingOrderRef.current || orderPollingService.getAlertActive()) {
+    // If user is offline (OFF DUTY) or an alert/pending order is active or an action is in progress, do not call polling API
+    if (
+      !isOnDuty ||
+      pendingOrderRef.current ||
+      orderPollingService.getAlertActive() ||
+      orderPollingService.isOrderActionInProgress()
+    ) {
       return;
     }
 
@@ -602,6 +609,11 @@ export function DashboardScreen({
 
     // Listen to incoming orders from native background service or foreground poll
     const unsubscribePending = orderPollingService.subscribeToPendingOrders(async incomingPending => {
+      if (orderPollingService.isOrderActionInProgress()) {
+        orderPollingService.stopRinging().catch(() => {});
+        return;
+      }
+
       const incomingKey = incomingPending._id || incomingPending.orderId;
       const currentKey = pendingOrderRef.current ? pendingOrderRef.current._id || pendingOrderRef.current.orderId : null;
 
@@ -729,6 +741,8 @@ export function DashboardScreen({
 
     isAcceptingInProgressRef.current = true;
     setOrderAccepting(true);
+    // Flag for push notification / polling: stop calling polling api while accept is in flight
+    orderPollingService.setOrderActionInProgress(true);
 
     const orderKey = orderToAccept._id || orderToAccept.orderId;
     const mongoId = orderToAccept._id || '';
@@ -770,6 +784,8 @@ export function DashboardScreen({
     } catch (err: any) {
       console.warn('[DashboardScreen] Error accepting order:', err?.message);
     } finally {
+      // Disable flag on api response (both case failed or pass)
+      orderPollingService.setOrderActionInProgress(false);
       setOrderAccepting(false);
       isAcceptingInProgressRef.current = false;
       loadDashboardData().catch(() => {});
@@ -795,6 +811,9 @@ export function DashboardScreen({
     const humanOrderId = orderToDecline.orderId || '';
 
     console.log('[DashboardScreen] Declining order:', { orderKey, mongoId, humanOrderId });
+
+    // Enable order action flag so polling and duplicate alerts are suppressed during decline
+    orderPollingService.setOrderActionInProgress(true);
 
     // 1. Immediately record as declined in local ref & notify polling service to ignore forever
     if (orderKey) declinedOrderIdsRef.current.add(orderKey);
@@ -871,6 +890,9 @@ export function DashboardScreen({
     } catch (err: any) {
       console.warn('[DashboardScreen] Error declining order:', err?.message);
     } finally {
+      // Disable flag on api response (both case failed or pass)
+      orderPollingService.setOrderActionInProgress(false);
+      setOrderDeclining(false);
       loadDashboardData().catch(() => {});
     }
   };

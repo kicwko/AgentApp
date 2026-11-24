@@ -21,6 +21,8 @@ class OrderPollingServiceManager {
   private isOnDuty: boolean = true;
   private isAlertActive: boolean = false;
   private alertTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private isActionInProgress: boolean = false;
+  private actionInProgressTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private intervalTimer: ReturnType<typeof setInterval> | null = null;
   private eventEmitter: NativeEventEmitter | null = null;
   private currentConfig: PollingConfig = {};
@@ -54,6 +56,10 @@ class OrderPollingServiceManager {
     // Listen to new pending order alerts from the native background service
     this.eventEmitter.addListener('onNewPendingOrder', (payload: any) => {
       try {
+        if (this.isActionInProgress) {
+          this.stopRinging().catch(() => {});
+          return;
+        }
         const order: BackendOrder =
           typeof payload === 'string' ? JSON.parse(payload) : payload;
         const oId = order._id || '';
@@ -189,7 +195,7 @@ class OrderPollingServiceManager {
    * If an active order alert is running on screen/phone, polling is skipped.
    */
   public async executeForegroundPoll(): Promise<void> {
-    if (!this.isRunning || !this.isOnDuty || this.isAlertActive) return;
+    if (!this.isRunning || !this.isOnDuty || this.isAlertActive || this.isActionInProgress) return;
 
     try {
       const coords = await locationService.getCurrentCoordinates();
@@ -420,6 +426,33 @@ class OrderPollingServiceManager {
   }
 
   /**
+   * Set flag when user clicks Accept/Decline (via in-app UI or push notification CTA).
+   * Stops calling polling API so that no multiple alerts/pop screens appear for the same order.
+   * Auto-resets if API call completes or times out.
+   */
+  public setOrderActionInProgress(inProgress: boolean): void {
+    this.isActionInProgress = inProgress;
+    if (this.actionInProgressTimeoutId) {
+      clearTimeout(this.actionInProgressTimeoutId);
+      this.actionInProgressTimeoutId = null;
+    }
+    if (inProgress) {
+      // 15-second failsafe auto-clear in case of catastrophic network hang
+      this.actionInProgressTimeoutId = setTimeout(() => {
+        this.setOrderActionInProgress(false);
+      }, 15000);
+    }
+    const mod = this.getNativeModule();
+    if (Platform.OS === 'android' && mod?.setOrderActionInProgress) {
+      mod.setOrderActionInProgress(inProgress).catch(() => {});
+    }
+  }
+
+  public isOrderActionInProgress(): boolean {
+    return this.isActionInProgress;
+  }
+
+  /**
    * Get latest pending order delivered via push notification click or background service.
    */
   public async getLatestPendingOrder(): Promise<BackendOrder | null> {
@@ -477,6 +510,7 @@ class OrderPollingServiceManager {
       await this.stop();
       await this.clearLatestPendingOrder();
     } catch {}
+    this.setOrderActionInProgress(false);
     this.declinedOrderIds.clear();
     this.pendingOrderSubscribers.clear();
     this.pollResponseSubscribers.clear();

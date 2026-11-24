@@ -52,6 +52,27 @@ class OrderPollingService : Service() {
         var isOrderAlertActive = false
 
         @Volatile
+        var isOrderActionInProgress: Boolean = false
+            private set
+
+        private var actionTimeoutRunnable: Runnable? = null
+        private val actionHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+        fun setOrderActionInProgress(inProgress: Boolean) {
+            isOrderActionInProgress = inProgress
+            actionTimeoutRunnable?.let { actionHandler.removeCallbacks(it) }
+            if (inProgress) {
+                val runnable = Runnable {
+                    isOrderActionInProgress = false
+                    Log.d(TAG, "isOrderActionInProgress auto-cleared after 15s timeout")
+                }
+                actionTimeoutRunnable = runnable
+                actionHandler.postDelayed(runnable, 15000)
+            }
+            Log.d(TAG, "isOrderActionInProgress set to $inProgress")
+        }
+
+        @Volatile
         var lastNotifiedOrderId: String? = null
 
         val acceptedOrderIds: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf<String>())
@@ -268,6 +289,11 @@ class OrderPollingService : Service() {
         }
 
         fun executeDirectPoll(context: Context) {
+            if (isOrderActionInProgress) {
+                Log.d(TAG, "executeDirectPoll skipped: isOrderActionInProgress is true")
+                return
+            }
+
             val inst = instance
             if (inst != null && isServiceRunning) {
                 inst.executePollCycle()
@@ -317,6 +343,10 @@ class OrderPollingService : Service() {
         }
 
         fun handlePollResponseStatic(context: Context, jsonStr: String) {
+            if (isOrderActionInProgress) {
+                Log.d(TAG, "handlePollResponseStatic skipped: isOrderActionInProgress is true")
+                return
+            }
             try {
                 val root = JSONObject(jsonStr)
                 val success = root.optBoolean("success", false)
@@ -601,7 +631,8 @@ class OrderPollingService : Service() {
     }
 
     fun executePollCycle() {
-        if (!isServiceRunning || isOrderAlertActive) {
+        if (!isServiceRunning || isOrderAlertActive || isOrderActionInProgress) {
+            Log.d(TAG, "executePollCycle skipped: alertActive=$isOrderAlertActive, actionInProgress=$isOrderActionInProgress")
             return
         }
 
