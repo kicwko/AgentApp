@@ -3,7 +3,6 @@ package com.kweecko.agentapp
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
 
 /**
@@ -24,27 +23,13 @@ class BootReceiver : BroadcastReceiver() {
         ) {
             val prefs = context.getSharedPreferences("KwiqoAgentPrefs", Context.MODE_PRIVATE)
             val phone = prefs.getString("phone", null)
-            val userId = prefs.getString("userId", null)
-            val token = prefs.getString("token", null)
-            val baseUrl = prefs.getString("baseUrl", null)
+            val onDuty = prefs.getBoolean("onDuty", true)
 
-            // Resurrect service if phone / credentials exist
-            if (!phone.isNullOrBlank()) {
-                val serviceIntent = Intent(context, OrderPollingService::class.java).apply {
-                    this.action = OrderPollingService.ACTION_START_POLLING
-                    putExtra("phone", phone)
-                    putExtra("userId", userId)
-                    putExtra("token", token)
-                    putExtra("baseUrl", baseUrl)
-                }
-
+            if (!phone.isNullOrBlank() && onDuty) {
                 try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(serviceIntent)
-                    } else {
-                        context.startService(serviceIntent)
-                    }
-                    Log.d("BootReceiver", "Successfully started OrderPollingService on $action")
+                    OrderPollingReceiver.startOrResurrectService(context)
+                    OrderPollingReceiver.scheduleNextAlarm(context, 2L)
+                    Log.d("BootReceiver", "Successfully scheduled resurrection on $action")
                 } catch (e: Exception) {
                     Log.w("BootReceiver", "Failed starting OrderPollingService on $action: ${e.message}")
                 }

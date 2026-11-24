@@ -709,4 +709,36 @@ describe('AccountStatusScreen', () => {
     });
     expect(onRefreshStatusMock).toHaveBeenCalledTimes(1);
   });
+
+  it('does not display manual Save Selfie button and aligns Freeze, Verified Picture, and Picture', async () => {
+    let renderer: any;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <AccountStatusScreen
+          accountData={{
+            status: 'Pending',
+            userName: 'Pending Partner',
+            phone: '9863517683',
+            checklist: {
+              picture: { submitted: true, photo: 'data:image/jpeg;base64,verified-pic-sample' },
+              bankDetails: { submitted: false },
+              policeVerification: { submitted: false },
+            },
+          }}
+          onSignOut={jest.fn()}
+        />
+      );
+    });
+
+    const root = renderer.root;
+    const textNodes = root.findAllByType('Text').map((node: any) => extractAllText(node.props.children));
+    const joined = textNodes.join(' ');
+
+    // Must NOT contain manual Save Selfie button
+    expect(joined).not.toContain('Save Selfie Picture');
+
+    // Must contain Freeze and Verified Picture indicators in aligned header
+    expect(joined).toContain('Freeze');
+    expect(joined).toContain('Verified Picture');
+  });
 });

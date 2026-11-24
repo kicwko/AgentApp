@@ -59,6 +59,7 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
             // Persist agent session to SharedPreferences so background service can always poll
             val prefs = reactContext.getSharedPreferences("KwiqoAgentPrefs", Context.MODE_PRIVATE)
             prefs.edit().apply {
+                putBoolean("onDuty", true)
                 if (!phone.isNullOrBlank()) putString("phone", phone)
                 if (!userId.isNullOrBlank()) putString("userId", userId)
                 if (!token.isNullOrBlank()) putString("token", token)
@@ -88,6 +89,11 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     @ReactMethod
     fun stopBackgroundPolling(promise: Promise) {
         try {
+            val prefs = reactContext.getSharedPreferences("KwiqoAgentPrefs", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("onDuty", false).apply()
+
+            OrderPollingReceiver.cancelAlarms(reactContext)
+
             val intent = Intent(reactContext, OrderPollingService::class.java).apply {
                 action = OrderPollingService.ACTION_STOP_POLLING
             }

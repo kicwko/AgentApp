@@ -63,6 +63,16 @@
         android:exported="false" />
 
       <receiver
+        android:name=".OrderPollingReceiver"
+        android:enabled="true"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="com.kweecko.agentapp.ACTION_POLL_ALARM" />
+            <action android:name="com.kweecko.agentapp.ACTION_RESURRECT" />
+        </intent-filter>
+      </receiver>
+
+      <receiver
         android:name=".BootReceiver"
         android:enabled="true"
         android:exported="true">

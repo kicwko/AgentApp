@@ -447,10 +447,9 @@ export function AccountStatusScreen({
           : (res as any)?.error || 'Face did not match with Aadhaar card photo. Please capture a clear front-facing picture.');
 
       if (isMatch) {
-        // Point 2: ONLY save selfie photo when face match response is verified!
-        setSelfiePhoto(imageData);
-        setSelfieSubmitted(true);
-        setHasUserEdited(true);
+        // Point 2: Auto-save verified selfie immediately (no manual button required)
+        const finalPhoto = (res as any)?.data?.user?.photo || imageData;
+        setSelfiePhoto(finalPhoto);
         setFaceMatchResult({
           status: 'success',
           matched: true,
@@ -458,15 +457,34 @@ export function AccountStatusScreen({
           threshold,
           message: apiMessage,
         });
-        if ((res as any)?.data?.user?.photo) {
-          setSelfiePhoto((res as any).data.user.photo);
+
+        setUploadingSelfie(true);
+        try {
+          const token =
+            accountData.token || accountData.userId || accountData.phone || accountData.email;
+          const saveRes = await userService.updatePendingDocuments({ picture: finalPhoto }, token);
+          if (saveRes && (saveRes.success || saveRes.status)) {
+            setSelfieSubmitted(true);
+            setHasUserEdited(true);
+            const nextReason = (saveRes as any)?.pendingReason || (saveRes as any)?.data?.pendingReason;
+            if (nextReason) setCurrentReason(nextReason);
+            if (onRefreshStatus) onRefreshStatus();
+            if (onDocumentsSubmitted) onDocumentsSubmitted(saveRes);
+            Alert.alert(
+              'Face Match Verified & Saved! ✓',
+              confidence
+                ? `${apiMessage}\n\nConfidence: ${confidence.toFixed(1)}% (Threshold: ${threshold ? threshold.toFixed(1) + '%' : 'Passed'})\n\nYour verified selfie has been saved automatically.`
+                : `${apiMessage}\n\nYour verified selfie has been saved automatically.`
+            );
+          } else {
+            throw new Error(saveRes?.message || 'Failed to auto-save verified selfie photo.');
+          }
+        } catch (saveErr: any) {
+          console.warn('[AccountStatus] Auto-save selfie error:', saveErr);
+          Alert.alert('Save Error', saveErr?.message || 'Face matched, but auto-saving photo failed. Please try again.');
+        } finally {
+          setUploadingSelfie(false);
         }
-        Alert.alert(
-          'Face Match Verified! ✓',
-          confidence
-            ? `${apiMessage}\n\nConfidence: ${confidence.toFixed(1)}% (Threshold: ${threshold ? threshold.toFixed(1) + '%' : 'Passed'})`
-            : apiMessage
-        );
       } else {
         // Point 2: Face did not match - DO NOT save selfie!
         const errorMsg =
@@ -1098,15 +1116,15 @@ export function AccountStatusScreen({
             {/* ============================================================== */}
             {selfieSubmitted && !faceMatchResult && !faceValidating ? (
               // REDUCED HEIGHT COMPACT CARD (Already Done & no active face match result to display)
-              <View style={[styles.compactCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+              <View style={[styles.compactCard, { backgroundColor: theme.cardBg, borderColor: '#A7F3D0' }]}>
                 <View style={styles.compactLeft}>
-                  <View style={[styles.compactDoneBadge, { backgroundColor: theme.successBg, borderColor: theme.successBorder }]}>
-                    <Text style={[styles.compactDoneIcon, { color: theme.successText }]}>✓</Text>
+                  <View style={[styles.compactDoneBadge, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
+                    <Text style={[styles.compactDoneIcon, { color: '#047857' }]}>✓</Text>
                   </View>
                   {selfiePhoto ? (
                     <Image
                       source={{ uri: selfiePhoto }}
-                      style={[styles.compactThumbnail, { borderColor: theme.primary }]}
+                      style={[styles.compactThumbnail, { borderColor: '#10B981' }]}
                       defaultSource={require('../assets/images/logo.png')}
                     />
                   ) : null}
@@ -1114,13 +1132,13 @@ export function AccountStatusScreen({
                     <Text style={[styles.compactTitle, { color: theme.textPrimary }]}>
                       Capture Selfie Photo
                     </Text>
-                    <Text style={[styles.compactSub, { color: theme.successText }]}>
-                      ✓ Photo Captured & Validated
+                    <Text style={[styles.compactSub, { color: '#047857' }]}>
+                      ✓ Photo Captured & Validated • Verified Picture
                     </Text>
                   </View>
                 </View>
                 <View style={styles.freezeBadge}>
-                  <Text style={styles.freezeBadgeText}>Freeze</Text>
+                  <Text style={styles.freezeBadgeText}>🔒 Freeze</Text>
                 </View>
               </View>
             ) : (
@@ -1225,53 +1243,109 @@ export function AccountStatusScreen({
                 {selfiePhoto ? (
                   <View
                     style={[
-                      styles.previewContainer,
+                      styles.previewContainerCol,
                       {
                         backgroundColor: theme.cardBgSubtle,
-                        borderColor: theme.border,
+                        borderColor: isImageValidated ? '#A7F3D0' : theme.border,
                       },
                     ]}>
-                    {/* Freeze Title above image when validated */}
-                    {isImageValidated && (
-                      <View style={styles.freezeHeaderRow}>
-                        <Text style={styles.freezeTitleText}>Freeze</Text>
-                        <View style={styles.freezeBadge}>
-                          <Text style={styles.freezeBadgeText}>✓ Validated</Text>
-                        </View>
+                    {/* Freeze & Status Header Row */}
+                    <View style={styles.freezeHeaderRow}>
+                      <View style={styles.freezeLabelGroup}>
+                        <Text style={styles.freezeLockIcon}>{isImageValidated ? '🔒' : '📷'}</Text>
+                        <Text style={[styles.freezeTitleText, { color: isImageValidated ? '#065F46' : theme.textPrimary }]}>
+                          {isImageValidated ? 'Freeze' : 'Verification'}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.freezeBadge,
+                          {
+                            backgroundColor: isImageValidated ? '#ECFDF5' : '#FEF3C7',
+                            borderColor: isImageValidated ? '#A7F3D0' : '#FDE68A',
+                          },
+                        ]}>
+                        <Text
+                          style={[
+                            styles.freezeBadgeText,
+                            { color: isImageValidated ? '#047857' : '#B45309' },
+                          ]}>
+                          {isImageValidated ? '✓ Verified Picture' : 'Matching Aadhaar...'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Perfectly Aligned Content Row: Picture + Details */}
+                    <View style={styles.previewContentRow}>
+                      <View style={styles.selfieImageWrapper}>
+                        <Image
+                          source={{ uri: selfiePhoto }}
+                          style={[
+                            styles.selfieImage,
+                            { borderColor: isImageValidated ? '#10B981' : theme.primary },
+                          ]}
+                          defaultSource={require('../assets/images/logo.png')}
+                        />
+                        {isImageValidated && (
+                          <View style={styles.verifiedCheckBadge}>
+                            <Text style={styles.verifiedCheckIcon}>✓</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.previewMeta}>
+                        <Text style={[styles.previewPictureTitle, { color: theme.textPrimary }]}>
+                          Live Selfie Photo
+                        </Text>
+                        <Text
+                          style={[
+                            styles.attachedBadge,
+                            {
+                              color: isImageValidated
+                                ? '#059669'
+                                : faceMatchResult?.status === 'error'
+                                ? colors.colorError
+                                : theme.textMuted,
+                            },
+                          ]}>
+                          {isImageValidated
+                            ? '✓ Aadhaar Face Matched & Verified'
+                            : faceMatchResult?.status === 'error'
+                            ? '⚠️ Face Match Failed'
+                            : '✓ Photo Selected'}
+                        </Text>
+                        {isImageValidated ? (
+                          <Text style={[styles.freezeSubtext, { color: '#047857' }]}>
+                            🔒 Picture is locked & automatically saved
+                          </Text>
+                        ) : (
+                          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                            <TouchableOpacity
+                              style={[
+                                styles.retakeButton,
+                                { borderColor: theme.borderMedium, backgroundColor: theme.cardBg },
+                              ]}
+                              onPress={() => {
+                                setHasUserEdited(true);
+                                handleOpenCapture('selfie');
+                              }}>
+                              <Text style={[styles.retakeText, { color: theme.primary }]}>
+                                🔄 Retake
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* Auto-Saving Spinner (if currently saving in background) */}
+                    {uploadingSelfie && (
+                      <View style={styles.autoSavingRow}>
+                        <ActivityIndicator size="small" color={theme.primary} />
+                        <Text style={[styles.autoSavingText, { color: theme.primary }]}>
+                          Auto-saving verified selfie...
+                        </Text>
                       </View>
                     )}
-                    <Image
-                      source={{ uri: selfiePhoto }}
-                      style={[styles.selfieImage, { borderColor: isImageValidated ? theme.successText : theme.primary }]}
-                      defaultSource={require('../assets/images/logo.png')}
-                    />
-                    <View style={styles.previewMeta}>
-                      <Text style={[styles.attachedBadge, { color: faceMatchResult?.status === 'error' ? colors.colorError : theme.successText }]}>
-                        {isImageValidated
-                          ? '✓ Face Match Verified'
-                          : faceMatchResult?.status === 'error'
-                          ? '⚠️ Face Match Failed'
-                          : '✓ Photo Selected'}
-                      </Text>
-                      {/* Retake CTA near pic icon only when image is NOT validated; removed once validated so user cannot update */}
-                      {!isImageValidated && (
-                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                          <TouchableOpacity
-                            style={[
-                              styles.retakeButton,
-                              { borderColor: theme.borderMedium, backgroundColor: theme.cardBg },
-                            ]}
-                            onPress={() => {
-                              setHasUserEdited(true);
-                              handleOpenCapture('selfie');
-                            }}>
-                            <Text style={[styles.retakeText, { color: theme.primary }]}>
-                              Retake
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
                   </View>
                 ) : (
                   <View style={styles.actionButtonGroup}>
@@ -1295,24 +1369,6 @@ export function AccountStatusScreen({
                     </TouchableOpacity>
                   </View>
                 )}
-
-                {/* Single Submission Button for Selfie Picture (When verified) */}
-                {isImageValidated && selfiePhoto ? (
-                  <TouchableOpacity
-                    style={[
-                      styles.cardActionSaveBtn,
-                      { backgroundColor: theme.primary, marginTop: 12 },
-                    ]}
-                    onPress={handleUploadSelfieDetails}
-                    disabled={uploadingSelfie}
-                    activeOpacity={0.85}>
-                    {uploadingSelfie ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.cardActionSaveBtnText}>💾 Save Selfie Picture</Text>
-                    )}
-                  </TouchableOpacity>
-                ) : null}
               </View>
             )}
 
@@ -2754,6 +2810,72 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#047857',
+  },
+  previewContainerCol: {
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  freezeLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  freezeLockIcon: {
+    fontSize: 14,
+  },
+  previewContentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  selfieImageWrapper: {
+    position: 'relative',
+    marginRight: 14,
+  },
+  verifiedCheckBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#10B981',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  verifiedCheckIcon: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  previewPictureTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  freezeSubtext: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  autoSavingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  autoSavingText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '600',
   },
   cardActionSaveBtn: {
     borderRadius: 10,
