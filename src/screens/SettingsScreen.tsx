@@ -87,7 +87,8 @@ export function SettingsScreen({
 
   // One-Time Registration Fee Status (from /api/users/me/agent-status polling)
   const [onetimePaymentstatus, setOnetimePaymentstatus] = useState<boolean | null>(null);
-  const [onetimefee, setOnetimefee] = useState<number>(500);
+  const [onetimefee, setOnetimefee] = useState<number>(2);
+  const [transactionDetails, setTransactionDetails] = useState<any>(null);
   const [confirmingPayment, setConfirmingPayment] = useState<boolean>(false);
 
   const hasBankDetails = Boolean(
@@ -220,6 +221,13 @@ export function SettingsScreen({
           setUpiId(u.upiId || u.bank?.upiId || '');
         }
 
+        if (u.onetimePaymentstatus !== undefined) {
+          setOnetimePaymentstatus(Boolean(u.onetimePaymentstatus));
+        }
+        if (u.transactionDetails || u.paymentDetails) {
+          setTransactionDetails(u.transactionDetails || u.paymentDetails);
+        }
+
         // Also fetch agent lifecycle and one-time payment status
         try {
           const agentStatusRes = await userService.getAgentStatus();
@@ -234,6 +242,11 @@ export function SettingsScreen({
               setOnetimefee(rawStatusRes.onetimefee);
             } else if (rawStatusRes.data?.onetimefee) {
               setOnetimefee(rawStatusRes.data.onetimefee);
+            }
+            if (rawStatusRes.transactionDetails || rawStatusRes.data?.transactionDetails) {
+              setTransactionDetails(rawStatusRes.transactionDetails || rawStatusRes.data?.transactionDetails);
+            } else if (rawStatusRes.paymentDetails || rawStatusRes.data?.paymentDetails) {
+              setTransactionDetails(rawStatusRes.paymentDetails || rawStatusRes.data?.paymentDetails);
             }
           }
         } catch (statusErr) {
@@ -287,6 +300,11 @@ export function SettingsScreen({
           dbUser?.email ||
           undefined,
         fullName: resolvedName || 'Partner',
+        ...(updates.onetimePaymentstatus !== undefined
+          ? { onetimePaymentstatus: Boolean(updates.onetimePaymentstatus) }
+          : {}),
+        ...(updates.paymentDetails ? { paymentDetails: updates.paymentDetails } : {}),
+        ...(updates.transactionDetails ? { transactionDetails: updates.transactionDetails } : {}),
         service:
           updates.service ||
           (selectedProfessions.length > 0
@@ -612,7 +630,9 @@ export function SettingsScreen({
               </View>
               <Text style={styles.onetimeFeeSub}>
                 {onetimePaymentstatus
-                  ? `₹${onetimefee} lifetime partner onboarding fee verified.`
+                  ? transactionDetails?.transactionId
+                    ? `✓ ₹${onetimefee} Payment Done • ${transactionDetails.transactionId}`
+                    : `✓ ₹${onetimefee} Registration payment completed.`
                   : `₹${onetimefee} mandatory partner onboarding fee is pending.`}
               </Text>
             </View>
@@ -1683,11 +1703,11 @@ export function SettingsScreen({
                   Transfer directly using Google Pay, PhonePe, Paytm, or BHIM:
                 </Text>
                 <View style={styles.upiCopyRow}>
-                  <Text style={styles.upiVpaText}>kwiqo@icici</Text>
+                  <Text style={styles.upiVpaText}>ero@icici</Text>
                   <TouchableOpacity
                     style={styles.upiCopyBtn}
                     onPress={() => {
-                      showToast('UPI ID copied: kwiqo@icici');
+                      showToast('UPI ID copied: ero@icici');
                     }}
                     activeOpacity={0.7}>
                     <Text style={styles.upiCopyBtnText}>Copy UPI</Text>
@@ -1697,9 +1717,9 @@ export function SettingsScreen({
                 <TouchableOpacity
                   style={styles.openUpiBtn}
                   onPress={() => {
-                    const upiUrl = `upi://pay?pa=kwiqo@icici&pn=Kweecko&am=${onetimefee}&cu=INR&tn=Kweecko%20Agent%20Registration%20Fee`;
+                    const upiUrl = `upi://pay?pa=ero@icici&pn=Kweecko&am=${onetimefee}&cu=INR&tn=Kweecko%20Agent%20Registration%20Fee`;
                     Linking.openURL(upiUrl).catch(() => {
-                      showToast('Could not launch UPI app. Please pay to kwiqo@icici');
+                      showToast('Could not launch UPI app. Please pay to ero@icici');
                     });
                   }}
                   activeOpacity={0.85}>
@@ -1721,16 +1741,45 @@ export function SettingsScreen({
                   onPress={async () => {
                     setConfirmingPayment(true);
                     try {
+                      const txnId = `TXN-UPI-${Date.now()}`;
+                      const txData = {
+                        transactionId: txnId,
+                        amount: onetimefee || 2,
+                        currency: 'INR',
+                        paidTo: 'ero@icici',
+                        upiId: 'ero@icici',
+                        method: 'UPI',
+                        status: 'Completed',
+                        paidAt: new Date().toISOString(),
+                      };
+
+                      // 1. Update backend agent status & transaction details
                       const res = await userService.updateAgentPayment({
                         onetimePaymentstatus: true,
+                        paymentDetails: txData,
+                        transactionDetails: txData,
+                        transactionId: txnId,
+                        amount: onetimefee || 2,
                       });
-                      if (res && (res.success || res.status)) {
-                        setOnetimePaymentstatus(true);
-                        setActiveModal('none');
-                        showToast('✓ Registration Fee Payment Recorded Successfully!');
-                      } else {
-                        throw new Error(res?.message || 'Payment update failed.');
+
+                      // 2. Also update user profile / user details with payment done & transaction details
+                      try {
+                        await saveProfileToDb(
+                          {
+                            onetimePaymentstatus: true,
+                            paymentDetails: txData,
+                            transactionDetails: txData,
+                          } as any,
+                          '✓ Registration Payment & Transaction Details Synced!'
+                        );
+                      } catch (dbErr) {
+                        console.warn('[SettingsScreen] saveProfileToDb payment sync notice:', dbErr);
                       }
+
+                      setTransactionDetails(txData);
+                      setOnetimePaymentstatus(true);
+                      setActiveModal('none');
+                      showToast(`✓ Payment of ₹${onetimefee} Done! [${txnId}]`);
                     } catch (err: any) {
                       showToast(err?.message || 'Failed to update payment status.');
                     } finally {

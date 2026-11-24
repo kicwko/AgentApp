@@ -52,6 +52,14 @@ jest.mock('../src/services/userService', () => ({
       onetimePaymentstatus: true,
       message: 'Payment recorded',
     }),
+    savePartnerProfile: jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        fullName: 'Ramesh Kumar',
+        phone: '9876543210',
+        onetimePaymentstatus: true,
+      },
+    }),
   },
 }));
 
@@ -152,7 +160,7 @@ describe('Agent Status Polling, Bank UPI & One-Time Payment', () => {
       success: true,
       status: 'Active',
       onetimePaymentstatus: false,
-      onetimefee: 500,
+      onetimefee: 2,
     });
 
     let renderer: any;
@@ -191,7 +199,7 @@ describe('Agent Status Polling, Bank UPI & One-Time Payment', () => {
 
     textNodes = root.findAllByType('Text').map((node: any) => extractAllText(node.props.children));
     joined = textNodes.join(' ');
-    expect(joined).toContain('kwiqo@icici');
+    expect(joined).toContain('ero@icici');
     expect(joined).toContain('I Have Completed Payment');
 
     // 3. Confirm payment
@@ -204,8 +212,18 @@ describe('Agent Status Polling, Bank UPI & One-Time Payment', () => {
       await confirmBtn.props.onPress();
     });
 
-    expect(userService.updateAgentPayment).toHaveBeenCalledWith({
-      onetimePaymentstatus: true,
-    });
+    expect(userService.updateAgentPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onetimePaymentstatus: true,
+        paymentDetails: expect.objectContaining({
+          upiId: 'ero@icici',
+          amount: 2,
+        }),
+        transactionDetails: expect.objectContaining({
+          upiId: 'ero@icici',
+          amount: 2,
+        }),
+      })
+    );
   });
 });

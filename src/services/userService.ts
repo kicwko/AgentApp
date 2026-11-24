@@ -78,6 +78,9 @@ export interface BackendUser {
   reason?: string;
   isBlocked?: boolean;
   isPending?: boolean;
+  onetimePaymentstatus?: boolean;
+  paymentDetails?: any;
+  transactionDetails?: any;
   preferences?: {
     instantPayout?: boolean;
     newsletter?: boolean;
@@ -144,6 +147,8 @@ export interface AgentStatusResponse {
   applicationId?: string;
   agentName?: string;
   number?: string;
+  transactionDetails?: any;
+  paymentDetails?: any;
   data?: {
     applicationId?: string;
     agentName?: string;
@@ -152,6 +157,8 @@ export interface AgentStatusResponse {
     agentId?: string;
     onetimefee?: number;
     onetimePaymentstatus?: boolean;
+    transactionDetails?: any;
+    paymentDetails?: any;
     updatedAt?: string;
     [key: string]: any;
   };
@@ -414,9 +421,15 @@ export const userService = {
     return apiClient.get<AgentStatusResponse>(API_CONFIG.endpoints.agentStatus);
   },
 
-  // Update agent one-time payment status
+  // Update agent one-time payment status and transaction details
   updateAgentPayment: async (
-    payload: { onetimePaymentstatus: boolean; paymentDetails?: any },
+    payload: {
+      onetimePaymentstatus: boolean;
+      paymentDetails?: any;
+      transactionDetails?: any;
+      transactionId?: string;
+      amount?: number;
+    },
     tokenOrUid?: string
   ): Promise<ApiResponse<any>> => {
     return apiClient.put<any>(API_CONFIG.endpoints.agentPayment, payload);
