@@ -136,9 +136,33 @@ describe('Duty Status Service & Persistence', () => {
       // 4. Add details CTA
       expect(findByProp('accessibilityLabel', 'Add Bank Details').length).toBeGreaterThan(0);
 
+      // 5. Log Out button renders with 'Log Out' title
+      expect(findByProp('title', 'Log Out').length).toBeGreaterThan(0);
+
       await ReactTestRenderer.act(async () => {
         root.unmount();
       });
     }, 15000);
+
+    it('resolveMediaUrl correctly formats media paths and preserves data URIs', () => {
+      const { resolveMediaUrl } = require('../src/screens/SettingsScreen');
+      expect(resolveMediaUrl('/uploads/user123/selfie_photo.png')).toBe(
+        'https://kweecko.com/uploads/user123/selfie_photo.png'
+      );
+      expect(resolveMediaUrl('uploads/user123/selfie_photo.png')).toBe(
+        'https://kweecko.com/uploads/user123/selfie_photo.png'
+      );
+      expect(resolveMediaUrl('https://example.com/avatar.jpg')).toBe(
+        'https://example.com/avatar.jpg'
+      );
+      expect(resolveMediaUrl('data:image/jpeg;base64,12345')).toBe(
+        'data:image/jpeg;base64,12345'
+      );
+      expect(resolveMediaUrl('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD')).toContain(
+        'data:image/jpeg;base64,/9j/'
+      );
+      expect(resolveMediaUrl(null)).toBe('');
+      expect(resolveMediaUrl('')).toBe('');
+    });
   });
 });

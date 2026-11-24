@@ -45,6 +45,27 @@ type ActiveModalType =
 const DEFAULT_AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuC2xDsBQyfSgjD1_OYEoIqVs2NC-TTMP_fnzBpy5zH4X7col1Kzj2god7HesSZPxt8eWRz13jOo61mrv9Dvuw241bXBVCixgDU2VJVWT2SfVh9MsA5Dhzu3U_ZJEmChDK5rUw__9gk9qQ1PDpLUBrh4gVi3QCemsKh3_ESVgN-Xt91qPtC1lW82dVU1eV_TbSumJUcZsN_KI-y8moS93qw1eOosGfNZodpLpzvktZA';
 
+export const resolveMediaUrl = (url?: string | null): string => {
+  if (!url || typeof url !== 'string' || !url.trim()) return '';
+  const trimmed = url.trim();
+  if (
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('file://')
+  ) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('/9j/')) {
+    return `data:image/jpeg;base64,${trimmed}`;
+  }
+  if (trimmed.startsWith('iVBORw0KGgo')) {
+    return `data:image/png;base64,${trimmed}`;
+  }
+  const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return `https://kweecko.com${cleanPath}`;
+};
+
 const ALL_SKILLS = [
   'Electrician',
   'Plumber',
@@ -65,6 +86,7 @@ export function SettingsScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dbUser, setDbUser] = useState<BackendUser | null>(null);
+  const [selfiePhoto, setSelfiePhoto] = useState<string>('');
 
   // Active edit modal
   const [activeModal, setActiveModal] = useState<ActiveModalType>('none');
@@ -226,6 +248,46 @@ export function SettingsScreen({
         }
         if (u.transactionDetails || u.paymentDetails) {
           setTransactionDetails(u.transactionDetails || u.paymentDetails);
+        }
+
+        // Check if user has selfie/photo in profile
+        let userPic =
+          u.selfie ||
+          u.photo ||
+          u.avatar ||
+          (u as any).checklist?.picture?.photo ||
+          (u as any).checklist?.picture?.selfie;
+
+        if (!userPic && u.documents && Array.isArray(u.documents)) {
+          const docSelfie = u.documents.find(
+            (d: any) =>
+              d &&
+              (d.category === 'Selfie' ||
+                d.type === 'Selfie' ||
+                d.name?.toLowerCase().includes('selfie') ||
+                d.name?.toLowerCase().includes('profile'))
+          );
+          if (docSelfie) {
+            userPic = docSelfie.data || docSelfie.url || docSelfie.path;
+          }
+        }
+
+        if (userPic) {
+          setSelfiePhoto(userPic);
+        } else {
+          // Fallback to check pending verification documents for selfie
+          try {
+            const token = cleanPhone || user.phoneNumber || user.uid;
+            const docRes = await userService.getPendingDocuments(token);
+            const chk: any = (docRes as any)?.checklist || (docRes as any)?.data?.checklist;
+            if (chk?.picture?.photo) {
+              setSelfiePhoto(chk.picture.photo);
+            } else if (chk?.picture?.selfie) {
+              setSelfiePhoto(chk.picture.selfie);
+            }
+          } catch (docErr) {
+            console.warn('[SettingsScreen] getPendingDocuments fallback error:', docErr);
+          }
         }
 
         // Also fetch agent lifecycle and one-time payment status
@@ -408,7 +470,7 @@ export function SettingsScreen({
   // Sign out confirmation dialog
   const handleSignOutPress = () => {
     Alert.alert(
-      'Sign Out of Agent Session',
+      'Log Out',
       'Are you sure you want to end your active agent shift and sign out? Any running timer will auto-pause.',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -461,8 +523,32 @@ export function SettingsScreen({
     dbUser?.preferences?.policeVerificationValid ||
     (dbUser?.policeVerification?.status === 'Approved' ? 'Verified' : 'Under Review');
 
-  const avatarUrl =
-    dbUser?.photo || dbUser?.avatar || user.photoURL || DEFAULT_AVATAR;
+  const rawAvatar =
+    selfiePhoto ||
+    dbUser?.selfie ||
+    dbUser?.photo ||
+    dbUser?.avatar ||
+    (dbUser as any)?.checklist?.picture?.photo ||
+    (dbUser as any)?.checklist?.picture?.selfie ||
+    dbUser?.documents?.find(
+      (d: any) =>
+        d &&
+        (d.category === 'Selfie' ||
+          d.type === 'Selfie' ||
+          d.name?.toLowerCase().includes('selfie') ||
+          d.name?.toLowerCase().includes('profile'))
+    )?.data ||
+    dbUser?.documents?.find(
+      (d: any) =>
+        d &&
+        (d.category === 'Selfie' ||
+          d.type === 'Selfie' ||
+          d.name?.toLowerCase().includes('selfie') ||
+          d.name?.toLowerCase().includes('profile'))
+    )?.url ||
+    user.photoURL;
+
+  const avatarUrl = resolveMediaUrl(rawAvatar) || DEFAULT_AVATAR;
 
   return (
     <View style={styles.screenContainer}>
@@ -997,7 +1083,7 @@ export function SettingsScreen({
             loading={signingOut}
             loadingText="Logging out..."
             icon={<Text style={styles.logoutIconGlyph}>🚪</Text>}
-            title="Log out of Agent Session"
+            title="Log Out"
           />
 
           <View style={styles.appFooterMeta}>

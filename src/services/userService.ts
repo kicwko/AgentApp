@@ -29,6 +29,9 @@ export interface BackendUser {
   vehicleNumber?: string;
   photo?: string;
   avatar?: string;
+  selfie?: string;
+  documents?: any[];
+  checklist?: any;
   bankName?: string;
   accountNumber?: string;
   upiId?: string;
@@ -101,6 +104,9 @@ export interface PendingDocumentsPayload {
   picture?: string;
   photo?: string;
   avatar?: string;
+  selfie?: string;
+  documents?: any[];
+  checklist?: any;
   bankDetails?: {
     accountHolderName?: string;
     accountNumber?: string;
