@@ -111,7 +111,7 @@ export function SettingsScreen({
   const [onetimePaymentstatus, setOnetimePaymentstatus] = useState<boolean | null>(null);
   const [onetimefee, setOnetimefee] = useState<number>(2);
   const [transactionDetails, setTransactionDetails] = useState<any>(null);
-  const [confirmingPayment, setConfirmingPayment] = useState<boolean>(false);
+  const [refreshingPaymentStatus, setRefreshingPaymentStatus] = useState<boolean>(false);
 
   const hasBankDetails = Boolean(
     (bankName && bankName.trim()) ||
@@ -499,6 +499,43 @@ export function SettingsScreen({
     }
   };
 
+  // Check live payment verification status from backend without adding dummy data
+  const handleCheckPaymentStatus = async () => {
+    setRefreshingPaymentStatus(true);
+    try {
+      const res = await userService.getAgentStatus();
+      const raw: any = res;
+      let isPaid = false;
+      if (raw) {
+        if (raw.onetimePaymentstatus !== undefined) {
+          isPaid = Boolean(raw.onetimePaymentstatus);
+        } else if (raw.data?.onetimePaymentstatus !== undefined) {
+          isPaid = Boolean(raw.data.onetimePaymentstatus);
+        }
+        if (raw.transactionDetails || raw.data?.transactionDetails) {
+          setTransactionDetails(raw.transactionDetails || raw.data?.transactionDetails);
+        } else if (raw.paymentDetails || raw.data?.paymentDetails) {
+          setTransactionDetails(raw.paymentDetails || raw.data?.paymentDetails);
+        }
+      }
+
+      await fetchUserProfile(false);
+
+      if (isPaid || onetimePaymentstatus) {
+        setOnetimePaymentstatus(true);
+        setActiveModal('none');
+        showToast('✓ Payment verified! Your registration fee is confirmed.');
+      } else {
+        showToast('Payment not detected yet. If you recently paid, please allow 1-2 minutes for bank sync and tap refresh again.');
+      }
+    } catch (err: any) {
+      console.warn('[SettingsScreen] Check payment status notice:', err?.message);
+      showToast('Could not verify status. Please tap refresh again in a moment.');
+    } finally {
+      setRefreshingPaymentStatus(false);
+    }
+  };
+
   // Sign out confirmation dialog
   const handleSignOutPress = () => {
     Alert.alert(
@@ -550,10 +587,19 @@ export function SettingsScreen({
       ? Number(dbUser.rating).toFixed(1)
       : '-';
 
+  const isAccountValidated =
+    dbUser?.status === 'Active' ||
+    dbUser?.status?.toLowerCase() === 'active' ||
+    dbUser?.verified === 'Verified' ||
+    dbUser?.verified === 'true' ||
+    dbUser?.policeVerification?.status === 'Approved' ||
+    dbUser?.policeVerification?.status === 'Verified' ||
+    dbUser?.policeVerification?.status === 'Active';
+
   const policeValidDate =
     dbUser?.policeVerification?.expiryDate ||
     dbUser?.preferences?.policeVerificationValid ||
-    (dbUser?.policeVerification?.status === 'Approved' ? 'Verified' : 'Under Review');
+    (isAccountValidated ? 'Verified' : (dbUser?.policeVerification?.status || 'Under Review'));
 
   const rawAvatar =
     selfiePhoto ||
@@ -1639,7 +1685,7 @@ export function SettingsScreen({
                     ID: {dbUser?.policeVerification?.certificateNumber || 'POL-VERIFIED'}
                   </Text>
                   <Text style={styles.policeStatusTag}>
-                    Status: {dbUser?.policeVerification?.status || 'Active'}
+                    Status: {isAccountValidated ? 'Verified' : (dbUser?.policeVerification?.status || 'Under Review')}
                   </Text>
                 </View>
               </View>
@@ -1881,69 +1927,23 @@ export function SettingsScreen({
               </View>
 
               <View style={styles.payConfirmBox}>
-                <Text style={styles.payConfirmTitle}>Already Completed Payment?</Text>
+                <Text style={styles.payConfirmTitle}>Already Paid?</Text>
                 <Text style={styles.payConfirmDesc}>
-                  If you have completed the UPI transfer, tap below to confirm and activate your status:
+                  If you have already completed the UPI transfer, refresh below to check your verified status:
                 </Text>
                 <TouchableOpacity
                   style={[
-                    styles.confirmPaidBtn,
-                    confirmingPayment && { opacity: 0.7 },
+                    styles.refreshPaidBtn,
+                    refreshingPaymentStatus && { opacity: 0.7 },
                   ]}
-                  disabled={confirmingPayment}
-                  onPress={async () => {
-                    setConfirmingPayment(true);
-                    try {
-                      const txnId = `TXN-UPI-${Date.now()}`;
-                      const txData = {
-                        transactionId: txnId,
-                        amount: onetimefee || 2,
-                        currency: 'INR',
-                        paidTo: 'ero@icici',
-                        upiId: 'ero@icici',
-                        method: 'UPI',
-                        status: 'Completed',
-                        paidAt: new Date().toISOString(),
-                      };
-
-                      // 1. Update backend agent status & transaction details
-                      const res = await userService.updateAgentPayment({
-                        onetimePaymentstatus: true,
-                        paymentDetails: txData,
-                        transactionDetails: txData,
-                        transactionId: txnId,
-                        amount: onetimefee || 2,
-                      });
-
-                      // 2. Also update user profile / user details with payment done & transaction details
-                      try {
-                        await saveProfileToDb(
-                          {
-                            onetimePaymentstatus: true,
-                            paymentDetails: txData,
-                            transactionDetails: txData,
-                          } as any,
-                          '✓ Registration Payment & Transaction Details Synced!'
-                        );
-                      } catch (dbErr) {
-                        console.warn('[SettingsScreen] saveProfileToDb payment sync notice:', dbErr);
-                      }
-
-                      setTransactionDetails(txData);
-                      setOnetimePaymentstatus(true);
-                      setActiveModal('none');
-                      showToast(`✓ Payment of ₹${onetimefee} Done! [${txnId}]`);
-                    } catch (err: any) {
-                      showToast(err?.message || 'Failed to update payment status.');
-                    } finally {
-                      setConfirmingPayment(false);
-                    }
-                  }}
-                  activeOpacity={0.85}>
-                  {confirmingPayment ? (
+                  disabled={refreshingPaymentStatus}
+                  onPress={handleCheckPaymentStatus}
+                  activeOpacity={0.85}
+                  accessibilityLabel="Refresh Payment Status">
+                  {refreshingPaymentStatus ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.confirmPaidBtnText}>✓ I Have Completed Payment</Text>
+                    <Text style={styles.refreshPaidBtnText}>🔄 Refresh to Check Payment Status</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -3290,8 +3290,20 @@ const styles = StyleSheet.create({
     color: '#78350F',
     marginVertical: 4,
   },
+  refreshPaidBtn: {
+    backgroundColor: '#059669',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  refreshPaidBtnText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   confirmPaidBtn: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#059669',
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',

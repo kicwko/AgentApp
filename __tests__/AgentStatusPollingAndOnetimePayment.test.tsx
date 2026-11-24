@@ -203,30 +203,62 @@ describe('Agent Status Polling, Bank UPI & One-Time Payment', () => {
     expect(joined).toContain('Paytm');
     expect(joined).toContain('PhonePe');
     expect(joined).toContain('GPay');
-    expect(joined).toContain('I Have Completed Payment');
+    expect(joined).toContain('Refresh to Check Payment Status');
 
-    // 3. Confirm payment
-    const confirmBtn = root.findAll((n: any) => typeof n.props?.onPress === 'function').find((btn: any) => {
-      return extractAllText(btn.props?.children).includes('I Have Completed Payment');
+    // 3. Refresh payment status (does not add fake demo data, checks backend verification)
+    const refreshBtn = root.findAll((n: any) => typeof n.props?.onPress === 'function').find((btn: any) => {
+      return extractAllText(btn.props?.children).includes('Refresh to Check Payment Status');
     });
-    expect(confirmBtn).toBeDefined();
+    expect(refreshBtn).toBeDefined();
+
+    (userService.getAgentStatus as jest.Mock).mockResolvedValueOnce({
+      success: true,
+      status: 'Active',
+      onetimePaymentstatus: true,
+      onetimefee: 2,
+    });
 
     await ReactTestRenderer.act(async () => {
-      await confirmBtn.props.onPress();
+      await refreshBtn.props.onPress();
     });
 
-    expect(userService.updateAgentPayment).toHaveBeenCalledWith(
-      expect.objectContaining({
-        onetimePaymentstatus: true,
-        paymentDetails: expect.objectContaining({
-          upiId: 'ero@icici',
-          amount: 2,
-        }),
-        transactionDetails: expect.objectContaining({
-          upiId: 'ero@icici',
-          amount: 2,
-        }),
-      })
-    );
+    expect(userService.getAgentStatus).toHaveBeenCalled();
+  });
+
+  it('Requirement 2: After user account is validated, Police Verification displays "Verified" instead of "Under Review"', async () => {
+    (userService.fetchPartnerProfile as jest.Mock).mockResolvedValueOnce({
+      success: true,
+      data: {
+        fullName: 'Ramesh Verma',
+        status: 'Active',
+        verified: 'Verified',
+        policeVerification: {
+          status: 'Active',
+        },
+      },
+    });
+
+    let renderer: any;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SettingsScreen
+          user={{
+            uid: 'usr-active-123',
+            displayName: 'Ramesh Verma',
+            phoneNumber: '9876543210',
+            email: 'ramesh@example.com',
+          } as any}
+          onSignOut={jest.fn()}
+        />
+      );
+    });
+
+    const root = renderer.root;
+    const textNodes = root.findAllByType('Text').map((node: any) => extractAllText(node.props.children));
+    const joined = textNodes.join(' ');
+
+    // Police Verification should show Verified and NOT Under Review
+    expect(joined).toContain('Police Verification: Verified');
+    expect(joined).not.toContain('Police Verification: Under Review');
   });
 });
