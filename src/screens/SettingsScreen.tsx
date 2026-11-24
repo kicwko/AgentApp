@@ -39,7 +39,8 @@ type ActiveModalType =
   | 'vehicle'
   | 'police'
   | 'sos'
-  | 'desk';
+  | 'desk'
+  | 'payment';
 
 const DEFAULT_AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuC2xDsBQyfSgjD1_OYEoIqVs2NC-TTMP_fnzBpy5zH4X7col1Kzj2god7HesSZPxt8eWRz13jOo61mrv9Dvuw241bXBVCixgDU2VJVWT2SfVh9MsA5Dhzu3U_ZJEmChDK5rUw__9gk9qQ1PDpLUBrh4gVi3QCemsKh3_ESVgN-Xt91qPtC1lW82dVU1eV_TbSumJUcZsN_KI-y8moS93qw1eOosGfNZodpLpzvktZA';
@@ -83,6 +84,11 @@ export function SettingsScreen({
   const [vehicleType, setVehicleType] = useState('');
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [kitCertified, setKitCertified] = useState(false);
+
+  // One-Time Registration Fee Status (from /api/users/me/agent-status polling)
+  const [onetimePaymentstatus, setOnetimePaymentstatus] = useState<boolean | null>(null);
+  const [onetimefee, setOnetimefee] = useState<number>(500);
+  const [confirmingPayment, setConfirmingPayment] = useState<boolean>(false);
 
   const hasBankDetails = Boolean(
     (bankName && bankName.trim()) ||
@@ -212,6 +218,26 @@ export function SettingsScreen({
               : ''
           );
           setUpiId(u.upiId || u.bank?.upiId || '');
+        }
+
+        // Also fetch agent lifecycle and one-time payment status
+        try {
+          const agentStatusRes = await userService.getAgentStatus();
+          const rawStatusRes: any = agentStatusRes;
+          if (rawStatusRes) {
+            if (rawStatusRes.onetimePaymentstatus !== undefined) {
+              setOnetimePaymentstatus(Boolean(rawStatusRes.onetimePaymentstatus));
+            } else if (rawStatusRes.data?.onetimePaymentstatus !== undefined) {
+              setOnetimePaymentstatus(Boolean(rawStatusRes.data.onetimePaymentstatus));
+            }
+            if (rawStatusRes.onetimefee) {
+              setOnetimefee(rawStatusRes.onetimefee);
+            } else if (rawStatusRes.data?.onetimefee) {
+              setOnetimefee(rawStatusRes.data.onetimefee);
+            }
+          }
+        } catch (statusErr) {
+          console.warn('[SettingsScreen] Agent status fetch notice:', statusErr);
         }
 
         if (isManualRefresh) {
@@ -540,6 +566,69 @@ export function SettingsScreen({
               <Text style={styles.viewCardChevron}>›</Text>
             </GradientButton>
           </View>
+        </View>
+
+        {/* One-Time Registration Fee Status Card (Below User Info Card) */}
+        <View
+          style={[
+            styles.onetimeFeeCard,
+            onetimePaymentstatus
+              ? styles.onetimeFeeCardPaid
+              : styles.onetimeFeeCardPending,
+          ]}>
+          <View style={styles.onetimeFeeLeft}>
+            <View
+              style={[
+                styles.onetimeFeeIconWrap,
+                {
+                  backgroundColor: onetimePaymentstatus ? '#ECFDF5' : '#FFFBEB',
+                  borderColor: onetimePaymentstatus ? '#A7F3D0' : '#FDE68A',
+                },
+              ]}>
+              <Text style={styles.onetimeFeeIcon}>
+                {onetimePaymentstatus ? '💳' : '⏳'}
+              </Text>
+            </View>
+            <View style={styles.onetimeFeeTexts}>
+              <View style={styles.onetimeFeeTitleRow}>
+                <Text style={styles.onetimeFeeTitle}>One-Time Registration Fee</Text>
+                <View
+                  style={[
+                    styles.onetimeFeeBadge,
+                    {
+                      backgroundColor: onetimePaymentstatus ? '#D1FAE5' : '#FEF3C7',
+                    },
+                  ]}>
+                  <Text
+                    style={[
+                      styles.onetimeFeeBadgeText,
+                      {
+                        color: onetimePaymentstatus ? '#065F46' : '#92400E',
+                      },
+                    ]}>
+                    {onetimePaymentstatus ? '✓ Paid' : '⚠️ Pending'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.onetimeFeeSub}>
+                {onetimePaymentstatus
+                  ? `₹${onetimefee} lifetime partner onboarding fee verified.`
+                  : `₹${onetimefee} mandatory partner onboarding fee is pending.`}
+              </Text>
+            </View>
+          </View>
+
+          {!onetimePaymentstatus && (
+            <TouchableOpacity
+              style={styles.onetimePayNowBtn}
+              onPress={() => {
+                setActiveModal('payment');
+              }}
+              activeOpacity={0.85}
+              accessibilityLabel="Pay One-Time Registration Fee Now">
+              <Text style={styles.onetimePayNowBtnText}>Pay Now ›</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Grouped Profile & Operational Configuration */}
@@ -1552,6 +1641,117 @@ export function SettingsScreen({
               title="Dismiss"
               onPress={() => setActiveModal('none')}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* 9. One-Time Registration Fee Payment Modal */}
+      <Modal
+        visible={activeModal === 'payment'}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setActiveModal('none')}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentCard}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 20, marginRight: 8 }}>💳</Text>
+                <Text style={styles.modalTitle}>Registration Fee</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setActiveModal('none')}
+                accessibilityLabel="Close Modal">
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={{ maxHeight: 380, marginVertical: 10 }}
+              showsVerticalScrollIndicator={false}>
+              <View style={styles.payAmountBox}>
+                <Text style={styles.payAmountLabel}>Total Amount Due</Text>
+                <Text style={styles.payAmountValue}>₹{onetimefee}</Text>
+                <Text style={styles.payAmountDesc}>
+                  One-time onboarding & security verification fee
+                </Text>
+              </View>
+
+              <View style={styles.payOptionBox}>
+                <Text style={styles.payOptionTitle}>Pay via UPI App</Text>
+                <Text style={styles.payOptionDesc}>
+                  Transfer directly using Google Pay, PhonePe, Paytm, or BHIM:
+                </Text>
+                <View style={styles.upiCopyRow}>
+                  <Text style={styles.upiVpaText}>kwiqo@icici</Text>
+                  <TouchableOpacity
+                    style={styles.upiCopyBtn}
+                    onPress={() => {
+                      showToast('UPI ID copied: kwiqo@icici');
+                    }}
+                    activeOpacity={0.7}>
+                    <Text style={styles.upiCopyBtnText}>Copy UPI</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.openUpiBtn}
+                  onPress={() => {
+                    const upiUrl = `upi://pay?pa=kwiqo@icici&pn=Kweecko&am=${onetimefee}&cu=INR&tn=Kweecko%20Agent%20Registration%20Fee`;
+                    Linking.openURL(upiUrl).catch(() => {
+                      showToast('Could not launch UPI app. Please pay to kwiqo@icici');
+                    });
+                  }}
+                  activeOpacity={0.85}>
+                  <Text style={styles.openUpiBtnText}>🚀 Open UPI App to Pay ₹{onetimefee}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.payConfirmBox}>
+                <Text style={styles.payConfirmTitle}>Already Completed Payment?</Text>
+                <Text style={styles.payConfirmDesc}>
+                  If you have completed the UPI transfer, tap below to confirm and activate your status:
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.confirmPaidBtn,
+                    confirmingPayment && { opacity: 0.7 },
+                  ]}
+                  disabled={confirmingPayment}
+                  onPress={async () => {
+                    setConfirmingPayment(true);
+                    try {
+                      const res = await userService.updateAgentPayment({
+                        onetimePaymentstatus: true,
+                      });
+                      if (res && (res.success || res.status)) {
+                        setOnetimePaymentstatus(true);
+                        setActiveModal('none');
+                        showToast('✓ Registration Fee Payment Recorded Successfully!');
+                      } else {
+                        throw new Error(res?.message || 'Payment update failed.');
+                      }
+                    } catch (err: any) {
+                      showToast(err?.message || 'Failed to update payment status.');
+                    } finally {
+                      setConfirmingPayment(false);
+                    }
+                  }}
+                  activeOpacity={0.85}>
+                  {confirmingPayment ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.confirmPaidBtnText}>✓ I Have Completed Payment</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalSaveButton, { backgroundColor: colors.surfaceContainerHigh, marginTop: 10 }]}
+              onPress={() => setActiveModal('none')}>
+              <Text style={[styles.modalSaveBtnText, { color: colors.onSurface }]}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -2647,5 +2847,209 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
     marginTop: 2,
+  },
+
+  // One-Time Registration Fee Card Styles
+  onetimeFeeCard: {
+    marginTop: 12,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+  },
+  onetimeFeeCardPaid: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+  },
+  onetimeFeeCardPending: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+  },
+  onetimeFeeLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 8,
+  },
+  onetimeFeeIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  onetimeFeeIcon: {
+    fontSize: 20,
+  },
+  onetimeFeeTexts: {
+    flex: 1,
+  },
+  onetimeFeeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  onetimeFeeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.onSurface,
+  },
+  onetimeFeeBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  onetimeFeeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  onetimeFeeSub: {
+    fontSize: 11,
+    color: colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  onetimePayNowBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  onetimePayNowBtnText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // Payment Modal Specific Styles
+  payAmountBox: {
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+  },
+  payAmountLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  payAmountValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.primary,
+    marginVertical: 4,
+  },
+  payAmountDesc: {
+    fontSize: 11,
+    color: colors.onSurfaceVariant,
+    textAlign: 'center',
+  },
+  payOptionBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  payOptionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.onSurface,
+  },
+  payOptionDesc: {
+    fontSize: 11,
+    color: colors.onSurfaceVariant,
+    marginVertical: 4,
+  },
+  upiCopyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.white,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    marginTop: 6,
+  },
+  upiVpaText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  upiCopyBtn: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  upiCopyBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  openUpiBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  openUpiBtnText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  payConfirmBox: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  payConfirmTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  payConfirmDesc: {
+    fontSize: 11,
+    color: '#78350F',
+    marginVertical: 4,
+  },
+  confirmPaidBtn: {
+    backgroundColor: '#10B981',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  confirmPaidBtnText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

@@ -164,9 +164,18 @@ export function AccountStatusScreen({
   const [accountHolderName, setAccountHolderName] = useState<string>(
     accountData.fullName || accountData.userName || ''
   );
-  const [accountNumber, setAccountNumber] = useState<string>('');
-  const [confirmAccountNumber, setConfirmAccountNumber] = useState<string>('');
-  const [ifscCode, setIfscCode] = useState<string>('');
+  const [accountNumber, setAccountNumber] = useState<string>(
+    accountData.checklist?.bankDetails?.accountNumber || ''
+  );
+  const [confirmAccountNumber, setConfirmAccountNumber] = useState<string>(
+    accountData.checklist?.bankDetails?.accountNumber || ''
+  );
+  const [ifscCode, setIfscCode] = useState<string>(
+    accountData.checklist?.bankDetails?.ifscCode || ''
+  );
+  const [upiId, setUpiId] = useState<string>(
+    accountData.checklist?.bankDetails?.upiId || ''
+  );
   const [optionalPhone, setOptionalPhone] = useState<string>('');
   const [bankName, setBankName] = useState<string>('');
   const [chequePhoto, setChequePhoto] = useState<string>('');
@@ -174,6 +183,7 @@ export function AccountStatusScreen({
   const [bankDetailsSubmitted, setBankDetailsSubmitted] = useState<boolean>(
     Boolean(accountData.checklist?.bankDetails?.submitted)
   );
+  const [isEditingBank, setIsEditingBank] = useState<boolean>(false);
   const [uploadingBank, setUploadingBank] = useState<boolean>(false);
 
   // 3. Police Verification (document only - no token/number input)
@@ -202,6 +212,7 @@ export function AccountStatusScreen({
     accountNumber: '',
     confirmAccountNumber: '',
     ifscCode: '',
+    upiId: '',
     optionalPhone: '',
     chequePhoto: '',
     policeDocData: '',
@@ -223,6 +234,7 @@ export function AccountStatusScreen({
       (accountNumber || '') !== (b.accountNumber || '') ||
       (confirmAccountNumber || '') !== (b.confirmAccountNumber || '') ||
       (ifscCode || '') !== (b.ifscCode || '') ||
+      (upiId || '') !== (b.upiId || '') ||
       (optionalPhone || '') !== (b.optionalPhone || '') ||
       (chequePhoto || '') !== (b.chequePhoto || '') ||
       (policeDocData || '') !== (b.policeDocData || '');
@@ -233,6 +245,7 @@ export function AccountStatusScreen({
     accountNumber,
     confirmAccountNumber,
     ifscCode,
+    upiId,
     optionalPhone,
     chequePhoto,
     policeDocData,
@@ -273,6 +286,20 @@ export function AccountStatusScreen({
       if (accountData.checklist.bankDetails?.submitted !== undefined) {
         setBankDetailsSubmitted(Boolean(accountData.checklist.bankDetails.submitted));
       }
+      if (accountData.checklist.bankDetails?.accountNumber) {
+        setAccountNumber(accountData.checklist.bankDetails.accountNumber);
+        setConfirmAccountNumber(accountData.checklist.bankDetails.accountNumber);
+        baselineRef.current.accountNumber = accountData.checklist.bankDetails.accountNumber;
+        baselineRef.current.confirmAccountNumber = accountData.checklist.bankDetails.accountNumber;
+      }
+      if (accountData.checklist.bankDetails?.ifscCode) {
+        setIfscCode(accountData.checklist.bankDetails.ifscCode);
+        baselineRef.current.ifscCode = accountData.checklist.bankDetails.ifscCode;
+      }
+      if (accountData.checklist.bankDetails?.upiId) {
+        setUpiId(accountData.checklist.bankDetails.upiId);
+        baselineRef.current.upiId = accountData.checklist.bankDetails.upiId;
+      }
       if (accountData.checklist.policeVerification?.submitted !== undefined) {
         setPoliceSubmitted(Boolean(accountData.checklist.policeVerification.submitted));
       }
@@ -293,12 +320,16 @@ export function AccountStatusScreen({
         } else if (pic?.submitted) {
           setSelfieSubmitted(true);
         } else if (pic?.submitted === false && !accountData.checklist?.picture?.submitted) {
+          setSelfiePhoto('');
           setSelfieSubmitted(false);
         }
 
         const bank = checklist.bankDetails || checklist.bank;
         if (bank) {
           if (bank.submitted) {
+            setBankDetailsSubmitted(true);
+          } else if (bank.rawAccountNumber || bank.accountNumber) {
+            // If bank account already exists, treat as submitted/saved so form is not open by default
             setBankDetailsSubmitted(true);
           } else if (bank.submitted === false && !accountData.checklist?.bankDetails?.submitted) {
             setBankDetailsSubmitted(false);
@@ -309,9 +340,11 @@ export function AccountStatusScreen({
             setConfirmAccountNumber(bank.rawAccountNumber || bank.accountNumber);
           }
           if (bank.ifscCode) setIfscCode(bank.ifscCode);
+          if (bank.upiId) setUpiId(bank.upiId);
           if (bank.bankName) setBankName(bank.bankName);
-          if (bank.cancelChequeDoc) setChequePhoto(bank.cancelChequeDoc);
-          if (bank.cancelChequeName) setChequeFileName(bank.cancelChequeName);
+          if (bank.phone) setOptionalPhone(bank.phone);
+          if (bank.cancelChequeDoc || bank.documentData) setChequePhoto(bank.cancelChequeDoc || bank.documentData);
+          if (bank.cancelChequeName || bank.documentName) setChequeFileName(bank.cancelChequeName || bank.documentName);
         }
 
         const police = checklist.policeVerification;
@@ -339,8 +372,9 @@ export function AccountStatusScreen({
           accountNumber: bank?.rawAccountNumber || bank?.accountNumber || '',
           confirmAccountNumber: bank?.rawAccountNumber || bank?.accountNumber || '',
           ifscCode: bank?.ifscCode || '',
+          upiId: bank?.upiId || '',
           optionalPhone: bank?.phone || '',
-          chequePhoto: bank?.cancelChequeDoc || '',
+          chequePhoto: bank?.cancelChequeDoc || bank?.documentData || '',
           policeDocData: police?.documentData || '',
         };
       }
@@ -581,6 +615,7 @@ export function AccountStatusScreen({
           accountHolderName: accountHolderName || accountData.fullName || 'Agent Partner',
           accountNumber: accountNumber.trim(),
           ifscCode: cleanIfsc,
+          upiId: upiId.trim() || undefined,
           bankName: bankName.trim() || undefined,
           phone: optionalPhone.trim() || undefined,
           documentData: chequePhoto || undefined,
@@ -590,6 +625,7 @@ export function AccountStatusScreen({
       const res = await userService.updatePendingDocuments(payload, token);
       if (res && (res.success || res.status)) {
         setBankDetailsSubmitted(true);
+        setIsEditingBank(false);
         Alert.alert(
           'Bank Details Uploaded',
           'Your bank account information has been saved successfully.'
@@ -672,6 +708,7 @@ export function AccountStatusScreen({
         accountHolderName: accountHolderName || accountData.fullName || 'Agent Partner',
         accountNumber: cleanAcc,
         ifscCode: cleanIfsc,
+        upiId: upiId.trim() || undefined,
         bankName: bankName.trim() || undefined,
         phone: optionalPhone.trim() || undefined,
         documentData: chequePhoto || undefined,
@@ -748,6 +785,7 @@ export function AccountStatusScreen({
           accountNumber,
           confirmAccountNumber,
           ifscCode,
+          upiId,
           optionalPhone,
           chequePhoto,
           policeDocData,
@@ -841,6 +879,12 @@ export function AccountStatusScreen({
       Alert.alert('Support Email', 'Please write to: support@kweecko.com');
     });
   };
+
+  const hasExistingBank = Boolean(
+    bankDetailsSubmitted ||
+      (baselineRef.current.accountNumber && baselineRef.current.accountNumber.trim().length >= 6) ||
+      accountData.checklist?.bankDetails?.accountNumber
+  );
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.bg }]}>
@@ -1375,8 +1419,8 @@ export function AccountStatusScreen({
             {/* ============================================================== */}
             {/* DOCUMENT 2: BANK DETAILS & CANCELLED CHEQUE */}
             {/* ============================================================== */}
-            {bankDetailsSubmitted ? (
-              // REDUCED HEIGHT COMPACT CARD (Already Done)
+            {hasExistingBank && !isEditingBank ? (
+              // REDUCED HEIGHT COMPACT CARD (Already Done / Bank Details Present)
               <View style={[styles.compactCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
                 <View style={styles.compactLeft}>
                   <View style={[styles.compactDoneBadge, { backgroundColor: theme.successBg, borderColor: theme.successBorder }]}>
@@ -1384,21 +1428,24 @@ export function AccountStatusScreen({
                   </View>
                   <View style={styles.compactTexts}>
                     <Text style={[styles.compactTitle, { color: theme.textPrimary }]}>
-                      Bank Details & Cancelled Cheque
+                      Bank Details & Payout Account
                     </Text>
                     <Text style={[styles.compactSub, { color: theme.successText }]}>
-                      ✓ {accountNumber ? `A/C •••• ${accountNumber.slice(-4)}` : 'Bank Account'} & Cheque Uploaded
+                      ✓ {accountNumber ? `A/C •••• ${accountNumber.slice(-4)}` : 'Bank Account Saved'}
+                      {ifscCode ? ` • ${ifscCode}` : ''}
+                      {upiId ? ` • UPI: ${upiId}` : ''}
                     </Text>
                   </View>
                 </View>
                 <TouchableOpacity
                   style={[styles.compactActionBtn, { borderColor: theme.borderMedium }]}
                   onPress={() => {
-                    setBankDetailsSubmitted(false);
+                    setIsEditingBank(true);
                     setHasUserEdited(true);
                   }}
-                  activeOpacity={0.7}>
-                  <Text style={[styles.compactActionText, { color: theme.primary }]}>Edit</Text>
+                  activeOpacity={0.7}
+                  accessibilityLabel="Change Bank Details">
+                  <Text style={[styles.compactActionText, { color: theme.primary }]}>Change</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -1547,6 +1594,37 @@ export function AccountStatusScreen({
                   />
                 </View>
 
+                {/* UPI ID / Payment Link */}
+                <View style={styles.formGroup}>
+                  <View style={styles.optionalLabelRow}>
+                    <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>
+                      UPI ID / Link
+                    </Text>
+                    <Text style={[styles.optionalTag, { color: theme.textDim }]}>
+                      (e.g. 8800313434@ptyes)
+                    </Text>
+                  </View>
+                  <TextInput
+                    style={[
+                      styles.textInput,
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        color: theme.textPrimary,
+                      },
+                    ]}
+                    placeholder="e.g. 8800313434@ptyes"
+                    placeholderTextColor={theme.textDim}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={upiId}
+                    onChangeText={text => {
+                      setUpiId(text.trim());
+                      setHasUserEdited(true);
+                    }}
+                  />
+                </View>
+
                 {/* Cancelled Cheque / Passbook Image Capture */}
                 <View
                   style={[
@@ -1612,20 +1690,42 @@ export function AccountStatusScreen({
                   )}
 
                   {/* Single Submission Button for Bank Details (User can save single data any time) */}
-                  <TouchableOpacity
-                    style={[
-                      styles.cardActionSaveBtn,
-                      { backgroundColor: theme.primary },
-                    ]}
-                    onPress={handleUploadBankDetails}
-                    disabled={uploadingBank}
-                    activeOpacity={0.85}>
-                    {uploadingBank ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.cardActionSaveBtnText}>💾 Save Bank Details</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14 }}>
+                    <TouchableOpacity
+                      style={[
+                        styles.cardActionSaveBtn,
+                        hasExistingBank ? { flex: 1, marginRight: 8, marginTop: 0 } : { flex: 1, marginTop: 0 },
+                        { backgroundColor: theme.primary },
+                      ]}
+                      onPress={handleUploadBankDetails}
+                      disabled={uploadingBank}
+                      activeOpacity={0.85}>
+                      {uploadingBank ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.cardActionSaveBtnText}>💾 Save Bank Details</Text>
+                      )}
+                    </TouchableOpacity>
+                    {hasExistingBank && (
+                      <TouchableOpacity
+                        style={{
+                          borderRadius: 10,
+                          paddingVertical: 12,
+                          paddingHorizontal: 16,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderWidth: 1,
+                          borderColor: theme.borderMedium,
+                          backgroundColor: theme.cardBgSubtle,
+                        }}
+                        onPress={() => setIsEditingBank(false)}
+                        activeOpacity={0.85}>
+                        <Text style={{ fontFamily: typography.fontFamily, fontSize: 13, fontWeight: '600', color: theme.textMuted }}>
+                          Cancel
+                        </Text>
+                      </TouchableOpacity>
                     )}
-                  </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             )}

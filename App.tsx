@@ -268,6 +268,58 @@ function App() {
     };
   }, []);
 
+  // Periodic 15-minute background polling for active agent status check
+  // GET /api/users/me/agent-status - strictly polls while user is Active doing jobs
+  const checkActiveAgentStatus = async () => {
+    try {
+      const res = await userService.getAgentStatus();
+      if (!res) return;
+
+      const rawRes: any = res;
+      const rawStatus = (rawRes?.status || rawRes?.data?.status || '').trim();
+      if (rawStatus && rawStatus.toLowerCase() !== 'active') {
+        console.log('[App] Polling /api/users/me/agent-status detected non-active status:', rawStatus);
+        const isBlocked = rawStatus.toLowerCase() === 'blocked';
+        const nextState: AccountStatusData = {
+          status: isBlocked ? 'Blocked' : 'Pending',
+          reason:
+            rawRes.message ||
+            rawRes.data?.pendingReason ||
+            rawRes.data?.reason ||
+            (isBlocked
+              ? 'Your partner account has been suspended or blocked by administration.'
+              : 'Your partner account is pending document verification and review.'),
+          pendingReason: rawRes.data?.pendingReason,
+          blockReason: rawRes.data?.blockReason,
+          applicationId: rawRes.applicationId || rawRes.data?.applicationId || accountStatus?.applicationId,
+          fullName: rawRes.agentName || rawRes.data?.agentName || accountStatus?.fullName,
+          phone: rawRes.number || rawRes.data?.number || accountStatus?.phone || user?.phoneNumber || '',
+          userId: user?.uid || accountStatus?.userId || '',
+        };
+        saveAndSetAccountStatus(nextState);
+      }
+    } catch (err) {
+      console.warn('[App] checkActiveAgentStatus polling notice:', err);
+    }
+  };
+
+  useEffect(() => {
+    // Only poll when partner is actively logged in and in 'Active' status doing jobs
+    const isUserActive = Boolean(user && (!accountStatus || accountStatus.status === 'Active'));
+    if (!isUserActive) return;
+
+    // 1. Initial check on app start / active state entered
+    checkActiveAgentStatus();
+
+    // 2. Poll every 15 minutes (15 * 60 * 1000 ms) while user is active only
+    const AGENT_STATUS_POLL_INTERVAL_MS = 15 * 60 * 1000;
+    const intervalId = setInterval(() => {
+      checkActiveAgentStatus();
+    }, AGENT_STATUS_POLL_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [user, accountStatus?.status]);
+
   const handleSignOut = async () => {
     try {
       await signOutUser();

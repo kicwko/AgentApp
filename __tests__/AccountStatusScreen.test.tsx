@@ -226,12 +226,11 @@ describe('AccountStatusScreen', () => {
     const textNodes = root.findAllByType('Text').map((node: any) => extractAllText(node.props.children));
     const joined = textNodes.join(' ');
 
-    // Freeze badge is shown for validated photo (update CTA removed) while Edit/Change remain for bank/police
+    // Freeze badge is shown for validated photo (update CTA removed) while Change button remains for bank/police
     expect(joined).toContain('Freeze');
-    expect(joined).toContain('Edit');
     expect(joined).toContain('Change');
     expect(joined).toContain('Photo Captured & Validated');
-    expect(joined).toContain('Cheque Uploaded');
+    expect(joined).toContain('•••• 9012');
 
     // "Upload Details" buttons should NOT be present when all 3 are already done
     const uploadDetailsOccurrences = textNodes.filter((t: string) => t.includes('Upload Details'));
@@ -373,7 +372,8 @@ describe('AccountStatusScreen', () => {
     });
 
     // Now Submit button should be enabled
-    const submitBtnAfter = pressables.find((btn: any) => {
+    const pressablesAfter = root.findAll((n: any) => typeof n.props?.onPress === 'function');
+    const submitBtnAfter = pressablesAfter.find((btn: any) => {
       const texts = extractAllText(btn.props?.children);
       return texts.trim() === 'Submit';
     });

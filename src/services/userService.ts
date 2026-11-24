@@ -135,6 +135,30 @@ export interface FaceMatchResponse {
   };
 }
 
+export interface AgentStatusResponse {
+  success?: boolean;
+  status?: 'Active' | 'Pending' | 'Blocked' | string;
+  onetimePaymentstatus?: boolean;
+  onetimefee?: number;
+  agentId?: string;
+  applicationId?: string;
+  agentName?: string;
+  number?: string;
+  data?: {
+    applicationId?: string;
+    agentName?: string;
+    number?: string;
+    status?: string;
+    agentId?: string;
+    onetimefee?: number;
+    onetimePaymentstatus?: boolean;
+    updatedAt?: string;
+    [key: string]: any;
+  };
+  message?: string;
+  error?: string;
+}
+
 export const userService = {
   // Fetch real live partner profile from backend by phone, email, or uid
   fetchPartnerProfile: async (params: {
@@ -383,6 +407,19 @@ export const userService = {
       `${API_CONFIG.endpoints.users}/${userId}`,
       userData
     );
+  },
+
+  // Fetch live agent lifecycle status & one-time payment status
+  getAgentStatus: async (tokenOrUid?: string): Promise<ApiResponse<AgentStatusResponse>> => {
+    return apiClient.get<AgentStatusResponse>(API_CONFIG.endpoints.agentStatus);
+  },
+
+  // Update agent one-time payment status
+  updateAgentPayment: async (
+    payload: { onetimePaymentstatus: boolean; paymentDetails?: any },
+    tokenOrUid?: string
+  ): Promise<ApiResponse<any>> => {
+    return apiClient.put<any>(API_CONFIG.endpoints.agentPayment, payload);
   },
 };
 

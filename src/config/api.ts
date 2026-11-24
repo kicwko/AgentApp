@@ -29,5 +29,7 @@ export const API_CONFIG = {
     pendingDocuments: '/users/me/pending-documents',
     faceMatch: '/users/face-match',
     locationGeocode: '/location/geocode',
+    agentStatus: '/users/me/agent-status',
+    agentPayment: '/users/me/agent-status/payment',
   },
 };
