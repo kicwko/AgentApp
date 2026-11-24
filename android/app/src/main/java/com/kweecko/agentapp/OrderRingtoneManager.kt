@@ -128,18 +128,23 @@ object OrderRingtoneManager {
 
     @Synchronized
     fun stopRinging() {
-        if (!isRinging) return
         isRinging = false
 
         mainHandler.removeCallbacks(timeoutRunnable)
 
         try {
             mediaPlayer?.let {
-                if (it.isPlaying) {
-                    it.stop()
-                }
-                it.reset()
-                it.release()
+                try {
+                    if (it.isPlaying) {
+                        it.stop()
+                    }
+                } catch (_: Exception) {}
+                try {
+                    it.reset()
+                } catch (_: Exception) {}
+                try {
+                    it.release()
+                } catch (_: Exception) {}
             }
             mediaPlayer = null
             Log.d(TAG, "Order dispatch MP3 alarm stopped successfully.")

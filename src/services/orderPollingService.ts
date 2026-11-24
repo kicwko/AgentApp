@@ -26,6 +26,7 @@ class OrderPollingServiceManager {
   private currentConfig: PollingConfig = {};
   private cachedPendingOrder: BackendOrder | null = null;
   private declinedOrderIds: Set<string> = new Set();
+  private acceptedOrderIds: Set<string> = new Set();
 
   private pendingOrderSubscribers: Set<OrderCallback> = new Set();
   private pollResponseSubscribers: Set<PollResponseCallback> = new Set();
@@ -57,7 +58,13 @@ class OrderPollingServiceManager {
           typeof payload === 'string' ? JSON.parse(payload) : payload;
         const oId = order._id || '';
         const oCode = order.orderId || '';
-        if (this.declinedOrderIds.has(oId) || this.declinedOrderIds.has(oCode)) {
+        if (
+          this.declinedOrderIds.has(oId) ||
+          this.declinedOrderIds.has(oCode) ||
+          this.acceptedOrderIds.has(oId) ||
+          this.acceptedOrderIds.has(oCode)
+        ) {
+          this.stopRinging().catch(() => {});
           return;
         }
         this.cachedPendingOrder = order;
@@ -283,6 +290,32 @@ class OrderPollingServiceManager {
     return () => {
       this.declinedActionSubscribers.delete(callback);
     };
+  }
+
+  /**
+   * Mark order as accepted across both JS state and native background service.
+   * Immediately silences audio, cancels notification, and prevents any re-ringing.
+   */
+  public markOrderAccepted(orderKey?: string, humanOrderId?: string, mongoId?: string): void {
+    if (orderKey) this.acceptedOrderIds.add(orderKey);
+    if (humanOrderId) this.acceptedOrderIds.add(humanOrderId);
+    if (mongoId) this.acceptedOrderIds.add(mongoId);
+
+    const mod = this.getNativeModule();
+    if (Platform.OS === 'android' && mod?.markOrderAccepted) {
+      if (orderKey) mod.markOrderAccepted(orderKey).catch(() => {});
+      if (humanOrderId && humanOrderId !== orderKey) mod.markOrderAccepted(humanOrderId).catch(() => {});
+      if (mongoId && mongoId !== orderKey) mod.markOrderAccepted(mongoId).catch(() => {});
+    }
+
+    this.stopRinging().catch(() => {});
+    this.clearLatestPendingOrder().catch(() => {});
+    this.setAlertActive(false);
+  }
+
+  public isOrderAccepted(orderId?: string | null): boolean {
+    if (!orderId) return false;
+    return this.acceptedOrderIds.has(orderId);
   }
 
   /**

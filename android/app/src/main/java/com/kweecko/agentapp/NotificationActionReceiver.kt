@@ -25,15 +25,20 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
         fun updateOrderStatusInBackground(context: Context, orderId: String, status: String, reason: String?) {
             thread {
-                val endpoints = listOf(
-                    "https://kweecko.com/api/orders/$orderId/status",
-                    "https://kweecko.com/api/orders/$orderId",
-                    "https://kweecko.com/api/orders/update/$orderId"
-                )
-
                 val prefs = context.getSharedPreferences("KwiqoAgentPrefs", Context.MODE_PRIVATE)
+                val rawBaseUrl = prefs.getString("baseUrl", "https://kweecko.com/api") ?: "https://kweecko.com/api"
+                val baseUrl = rawBaseUrl.trimEnd('/')
                 val cleanPhone = prefs.getString("phone", null)?.replace("\\D".toRegex(), "")?.takeLast(10)
                 val token = prefs.getString("token", null)
+                val userId = prefs.getString("userId", null)
+
+                val endpoints = listOf(
+                    "$baseUrl/orders/$orderId/status",
+                    "$baseUrl/orders/$orderId",
+                    "$baseUrl/orders/update/$orderId",
+                    "https://kweecko.com/api/orders/$orderId/status",
+                    "https://kweecko.com/api/orders/$orderId"
+                )
 
                 val payload = buildString {
                     append("{\"status\":\"$status\"")
@@ -56,6 +61,9 @@ class NotificationActionReceiver : BroadcastReceiver() {
                         conn.setRequestProperty("Accept", "application/json")
                         conn.setRequestProperty("x-admin-email", "admin@kwiqo.com")
                         conn.setRequestProperty("x-user-role", "admin")
+                        if (!userId.isNullOrBlank()) {
+                            conn.setRequestProperty("x-user-id", userId)
+                        }
                         if (!cleanPhone.isNullOrBlank()) {
                             conn.setRequestProperty("x-user-phone", cleanPhone)
                             conn.setRequestProperty("x-auth-token", "mock-jwt-$cleanPhone")
@@ -104,6 +112,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
         when (action) {
             ACTION_ACCEPT -> {
                 Log.d(TAG, "User accepted order via notification: $orderId")
+                OrderPollingService.markOrderAccepted(context, orderId)
                 BackgroundPollingModule.emitOrderEvent("onOrderAcceptedFromNotification", orderId)
 
                 // Update order status to 'In Transit' in background thread
@@ -122,7 +131,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
             ACTION_DECLINE -> {
                 Log.d(TAG, "User declined order via notification: $orderId")
-                OrderPollingService.markOrderDeclined(orderId)
+                OrderPollingService.markOrderDeclined(context, orderId)
                 BackgroundPollingModule.emitOrderEvent("onOrderDeclinedFromNotification", orderId)
 
                 // Update order status to 'Canceled' in background thread
@@ -133,6 +142,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
             ACTION_DISMISS -> {
                 Log.d(TAG, "Notification dismissed by user for order: $orderId")
+                OrderRingtoneManager.stopRinging()
+                OrderPollingService.resetLastNotifiedOrder()
             }
         }
     }

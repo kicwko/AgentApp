@@ -266,6 +266,7 @@ export function DashboardScreen({
   const pendingOrderRef = useRef<BackendOrder | null>(null);
   pendingOrderRef.current = pendingOrder;
   const declinedOrderIdsRef = useRef<Set<string>>(new Set());
+  const acceptedOrderIdsRef = useRef<Set<string>>(new Set());
   const lastAcceptedToastTimeRef = useRef<number>(0);
   const isAcceptingInProgressRef = useRef<boolean>(false);
 
@@ -530,7 +531,9 @@ export function DashboardScreen({
           o =>
             o.status === 'Pending' &&
             !declinedOrderIdsRef.current.has(o._id || '') &&
-            !declinedOrderIdsRef.current.has(o.orderId || '')
+            !declinedOrderIdsRef.current.has(o.orderId || '') &&
+            !acceptedOrderIdsRef.current.has(o._id || '') &&
+            !acceptedOrderIdsRef.current.has(o.orderId || '')
         );
 
         if (incomingPending) {
@@ -574,7 +577,9 @@ export function DashboardScreen({
       if (
         latestPending &&
         !declinedOrderIdsRef.current.has(latestPending._id || '') &&
-        !declinedOrderIdsRef.current.has(latestPending.orderId || '')
+        !declinedOrderIdsRef.current.has(latestPending.orderId || '') &&
+        !acceptedOrderIdsRef.current.has(latestPending._id || '') &&
+        !acceptedOrderIdsRef.current.has(latestPending.orderId || '')
       ) {
         const createdMs = latestPending.createdAt
           ? new Date(latestPending.createdAt).getTime()
@@ -601,10 +606,14 @@ export function DashboardScreen({
       const currentKey = pendingOrderRef.current ? pendingOrderRef.current._id || pendingOrderRef.current.orderId : null;
 
       if (
+        acceptedOrderIdsRef.current.has(incomingKey || '') ||
+        (incomingPending._id && acceptedOrderIdsRef.current.has(incomingPending._id)) ||
+        (incomingPending.orderId && acceptedOrderIdsRef.current.has(incomingPending.orderId)) ||
         declinedOrderIdsRef.current.has(incomingKey || '') ||
         (incomingPending._id && declinedOrderIdsRef.current.has(incomingPending._id)) ||
         (incomingPending.orderId && declinedOrderIdsRef.current.has(incomingPending.orderId))
       ) {
+        orderPollingService.stopRinging().catch(() => {});
         return;
       }
 
@@ -637,6 +646,10 @@ export function DashboardScreen({
 
     const unsubscribeAccepted = orderPollingService.subscribeToAcceptedAction(orderId => {
       console.log('[DashboardScreen] Order accepted via notification action:', orderId);
+      if (orderId) {
+        acceptedOrderIdsRef.current.add(orderId);
+        orderPollingService.markOrderAccepted(orderId);
+      }
       orderPollingService.stopRinging().catch(() => {});
       orderPollingService.clearLatestPendingOrder().catch(() => {});
       orderPollingService.setAlertActive(false);
@@ -718,6 +731,15 @@ export function DashboardScreen({
     setOrderAccepting(true);
 
     const orderKey = orderToAccept._id || orderToAccept.orderId;
+    const mongoId = orderToAccept._id || '';
+    const humanOrderId = orderToAccept.orderId || '';
+
+    if (orderKey) acceptedOrderIdsRef.current.add(orderKey);
+    if (mongoId) acceptedOrderIdsRef.current.add(mongoId);
+    if (humanOrderId) acceptedOrderIdsRef.current.add(humanOrderId);
+
+    // Record as accepted across JS & Native background service so alarm NEVER rings for it again
+    orderPollingService.markOrderAccepted(orderKey, humanOrderId, mongoId);
 
     // Immediately stop audio & dismiss modal optimistically so UI never freezes
     orderPollingService.stopRinging().catch(() => {});

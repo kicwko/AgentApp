@@ -148,10 +148,22 @@ class BackgroundPollingModule(private val reactContext: ReactApplicationContext)
     }
 
     @ReactMethod
+    fun markOrderAccepted(orderId: String, promise: Promise) {
+        try {
+            if (orderId.isNotBlank()) {
+                OrderPollingService.markOrderAccepted(reactContext, orderId)
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
     fun markOrderDeclined(orderId: String, promise: Promise) {
         try {
             if (orderId.isNotBlank()) {
-                OrderPollingService.markOrderDeclined(orderId)
+                OrderPollingService.markOrderDeclined(reactContext, orderId)
             }
             promise.resolve(true)
         } catch (e: Exception) {

@@ -54,27 +54,87 @@ class OrderPollingService : Service() {
         @Volatile
         var lastNotifiedOrderId: String? = null
 
+        val acceptedOrderIds: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf<String>())
         val declinedOrderIds: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
         @Volatile
         private var instance: OrderPollingService? = null
 
-        fun markOrderDeclined(orderId: String) {
+        fun loadHandledOrders(context: Context) {
+            try {
+                val prefs = context.getSharedPreferences("KwiqoAgentPrefs", Context.MODE_PRIVATE)
+                val savedAccepted = prefs.getStringSet("accepted_order_ids", null)
+                if (savedAccepted != null) {
+                    acceptedOrderIds.addAll(savedAccepted)
+                }
+                val savedDeclined = prefs.getStringSet("declined_order_ids", null)
+                if (savedDeclined != null) {
+                    declinedOrderIds.addAll(savedDeclined)
+                }
+            } catch (_: Exception) {}
+        }
+
+        private fun persistHandledOrderId(context: Context, type: String, id: String) {
+            try {
+                val prefs = context.getSharedPreferences("KwiqoAgentPrefs", Context.MODE_PRIVATE)
+                val key = if (type == "accepted") "accepted_order_ids" else "declined_order_ids"
+                val existing = prefs.getStringSet(key, mutableSetOf())?.toMutableSet() ?: mutableSetOf()
+                existing.add(id)
+                prefs.edit().putStringSet(key, existing).apply()
+            } catch (_: Exception) {}
+        }
+
+        fun markOrderAccepted(context: Context?, orderId: String) {
             val cleanId = orderId.trim()
             if (cleanId.isNotBlank()) {
-                declinedOrderIds.add(cleanId)
+                acceptedOrderIds.add(cleanId)
+                if (context != null) {
+                    persistHandledOrderId(context, "accepted", cleanId)
+                }
             }
             if (lastNotifiedOrderId == cleanId) {
                 lastNotifiedOrderId = null
-                isOrderAlertActive = false
-                instance?.cancelAlertAutoExpiry()
             }
+            isOrderAlertActive = false
+            instance?.cancelAlertAutoExpiry()
+            OrderRingtoneManager.stopRinging()
+            if (context != null) {
+                val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                manager?.cancel(ORDER_ALERT_NOTIFICATION_ID)
+            }
+            Log.d(TAG, "Order $cleanId marked as ACCEPTED. Ringtone and alert stopped.")
+        }
+
+        fun markOrderDeclined(orderId: String) {
+            markOrderDeclined(instance?.applicationContext, orderId)
+        }
+
+        fun markOrderDeclined(context: Context?, orderId: String) {
+            val cleanId = orderId.trim()
+            if (cleanId.isNotBlank()) {
+                declinedOrderIds.add(cleanId)
+                if (context != null) {
+                    persistHandledOrderId(context, "declined", cleanId)
+                }
+            }
+            if (lastNotifiedOrderId == cleanId) {
+                lastNotifiedOrderId = null
+            }
+            isOrderAlertActive = false
+            instance?.cancelAlertAutoExpiry()
+            OrderRingtoneManager.stopRinging()
+            if (context != null) {
+                val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                manager?.cancel(ORDER_ALERT_NOTIFICATION_ID)
+            }
+            Log.d(TAG, "Order $cleanId marked as DECLINED. Ringtone and alert stopped.")
         }
 
         fun resetLastNotifiedOrder() {
             lastNotifiedOrderId = null
             isOrderAlertActive = false
             instance?.cancelAlertAutoExpiry()
+            OrderRingtoneManager.stopRinging()
         }
 
         fun createNotificationChannels(context: Context) {
@@ -289,9 +349,24 @@ class OrderPollingService : Service() {
                     val humanOrderId = pendingOrderObj.optString("orderId", "")
                     val mongoId = pendingOrderObj.optString("_id", "")
 
-                    if (declinedOrderIds.contains(orderId) ||
+                    loadHandledOrders(context)
+
+                    val isDeclined = declinedOrderIds.contains(orderId) ||
                         (humanOrderId.isNotBlank() && declinedOrderIds.contains(humanOrderId)) ||
-                        (mongoId.isNotBlank() && declinedOrderIds.contains(mongoId))) {
+                        (mongoId.isNotBlank() && declinedOrderIds.contains(mongoId))
+
+                    val isAccepted = acceptedOrderIds.contains(orderId) ||
+                        (humanOrderId.isNotBlank() && acceptedOrderIds.contains(humanOrderId)) ||
+                        (mongoId.isNotBlank() && acceptedOrderIds.contains(mongoId))
+
+                    if (isDeclined || isAccepted) {
+                        Log.d(TAG, "Order $orderId has already been handled (accepted=$isAccepted, declined=$isDeclined). Ignoring.")
+                        if (isOrderAlertActive || OrderRingtoneManager.isCurrentlyRinging()) {
+                            OrderRingtoneManager.stopRinging()
+                            isOrderAlertActive = false
+                            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                            manager?.cancel(ORDER_ALERT_NOTIFICATION_ID)
+                        }
                         return
                     }
 
@@ -589,7 +664,21 @@ class OrderPollingService : Service() {
     private fun executeFallbackPendingOrdersCheck() {
         var fallbackConn: HttpURLConnection? = null
         try {
-            val fallbackUrl = "${apiBaseUrl}/orders?status=Pending&limit=20"
+            if (agentPhone.isNullOrBlank()) {
+                val prefs = getSharedPreferences("KwiqoAgentPrefs", Context.MODE_PRIVATE)
+                agentPhone = prefs.getString("phone", null)
+                if (agentUserId.isNullOrBlank()) agentUserId = prefs.getString("userId", null)
+                if (authToken.isNullOrBlank()) authToken = prefs.getString("token", null)
+            }
+
+            val cleanPhone = agentPhone?.replace("\\D".toRegex(), "")?.takeLast(10)
+            val agentParam = if (!cleanPhone.isNullOrBlank()) "agentId=$cleanPhone" else if (!agentUserId.isNullOrBlank()) "agentId=$agentUserId" else null
+            if (agentParam == null) {
+                Log.d(TAG, "No agent identifier found for fallback orders check, skipping global query.")
+                return
+            }
+
+            val fallbackUrl = "${apiBaseUrl}/orders?$agentParam&status=Pending&limit=20"
             val url = URL(fallbackUrl)
             fallbackConn = url.openConnection() as HttpURLConnection
             fallbackConn.requestMethod = "GET"
@@ -600,7 +689,6 @@ class OrderPollingService : Service() {
             fallbackConn.setRequestProperty("x-admin-email", "admin@kwiqo.com")
             fallbackConn.setRequestProperty("x-user-role", "admin")
 
-            val cleanPhone = agentPhone?.replace("\\D".toRegex(), "")?.takeLast(10)
             if (!cleanPhone.isNullOrBlank()) {
                 fallbackConn.setRequestProperty("x-user-phone", cleanPhone)
                 fallbackConn.setRequestProperty("x-auth-token", "mock-jwt-$cleanPhone")

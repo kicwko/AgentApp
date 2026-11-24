@@ -40,8 +40,11 @@ class MainActivity : ReactActivity() {
 
   override fun onResume() {
     super.onResume()
-    // Do NOT stop ringing or dismiss alert in onResume.
-    // The persistent ringtone must continue playing until user explicitly accepts or declines!
+    val isAccepted = intent?.getBooleanExtra("accepted", false) ?: false
+    if (isAccepted) {
+      OrderRingtoneManager.stopRinging()
+      OrderPollingService.resetLastNotifiedOrder()
+    }
     handleNotificationIntent()
     applyLightSystemBars()
   }
@@ -50,15 +53,52 @@ class MainActivity : ReactActivity() {
    * When user clicks on the push notification banner to open the app,
    * extract the dispatched order payload and emit to React Native so the full-screen
    * incoming dispatch alert modal appears immediately.
-   * Note: The ringtone continues to play until the user taps ACCEPT or DECLINE.
+   * If the order has already been accepted or handled, sound is stopped immediately.
    */
   private fun handleNotificationIntent() {
     try {
+      val isAccepted = intent?.getBooleanExtra("accepted", false) ?: false
+      val orderId = intent?.getStringExtra("orderId") ?: ""
+      if (isAccepted) {
+        OrderRingtoneManager.stopRinging()
+        if (orderId.isNotBlank()) {
+          OrderPollingService.markOrderAccepted(this, orderId)
+        }
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        manager?.cancel(1002)
+        intent?.removeExtra("accepted")
+        intent?.removeExtra("orderId")
+        return
+      }
+
       val orderJson = intent?.getStringExtra("orderJson")
       if (!orderJson.isNullOrBlank()) {
         intent?.removeExtra("orderJson")
         intent?.removeExtra("orderId")
         intent?.removeExtra("openOrder")
+
+        // If this order is already in acceptedOrderIds, stop ringing immediately and do not re-emit
+        OrderPollingService.loadHandledOrders(this)
+        var isAlreadyHandled = false
+        try {
+          val obj = org.json.JSONObject(orderJson)
+          val id = obj.optString("_id", obj.optString("orderId", ""))
+          val humanId = obj.optString("orderId", "")
+          val mongoId = obj.optString("_id", "")
+          if (OrderPollingService.acceptedOrderIds.contains(id) ||
+              (humanId.isNotBlank() && OrderPollingService.acceptedOrderIds.contains(humanId)) ||
+              (mongoId.isNotBlank() && OrderPollingService.acceptedOrderIds.contains(mongoId))) {
+            isAlreadyHandled = true
+          }
+        } catch (_: Exception) {}
+
+        if (isAlreadyHandled) {
+          OrderRingtoneManager.stopRinging()
+          val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+          manager?.cancel(1002)
+          return
+        }
+
         BackgroundPollingModule.pendingOrderJson = orderJson
         BackgroundPollingModule.emitOrderEvent("onNewPendingOrder", orderJson)
 

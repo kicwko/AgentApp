@@ -286,4 +286,42 @@ describe('DashboardScreen Polling and Order Dispatch', () => {
       );
     }
   });
+
+  it('silences ringtone and never re-alerts for an already accepted order when background poll returns it', async () => {
+    const stopRingingSpy = jest.spyOn(orderPollingService, 'stopRinging');
+    const markAcceptedSpy = jest.spyOn(orderPollingService, 'markOrderAccepted');
+
+    // Mark the order as accepted
+    orderPollingService.markOrderAccepted('ord-pending-123', 'KWK-ORD-2026-99001');
+
+    expect(markAcceptedSpy).toHaveBeenCalled();
+    expect(orderPollingService.isOrderAccepted('ord-pending-123')).toBe(true);
+    expect(orderPollingService.isOrderAccepted('KWK-ORD-2026-99001')).toBe(true);
+
+    // Mock pollOrders returning the accepted order still as pending
+    (orderService.pollOrders as jest.Mock).mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        hasNewOrder: true,
+        latestOrder: mockPendingOrder,
+        orders: [mockPendingOrder],
+      },
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<DashboardScreen user={mockUser as any} />);
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+
+    // Modal must NOT be visible and audio must NOT be ringing for accepted order
+    const root = renderer!.root;
+    const textNodes = root.findAllByType(Text).map((node: any) => node.props.children);
+    const joinedText = JSON.stringify(textNodes);
+    expect(joinedText).not.toContain('INCOMING DISPATCH');
+
+    stopRingingSpy.mockRestore();
+    markAcceptedSpy.mockRestore();
+  });
 });
